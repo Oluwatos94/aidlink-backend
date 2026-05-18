@@ -1,0 +1,144 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: aidlink-postgres
+    environment:
+      POSTGRES_USER: aidlink
+      POSTGRES_PASSWORD: aidlink_password
+      POSTGRES_DB: aidlink
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aidlink"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aidlink-network
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: aidlink-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aidlink-network
+
+  # Backend API
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: aidlink-api
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://aidlink:aidlink_password@postgres:5432/aidlink?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SOROBAN_NETWORK_URL: ${SOROBAN_NETWORK_URL}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - aidlink-network
+    restart: unless-stopped
+
+  # Email Worker
+  email-worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: aidlink-email-worker
+    command: node dist/workers/email.worker.js
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://aidlink:aidlink_password@postgres:5432/aidlink?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - aidlink-network
+    restart: unless-stopped
+
+  # Blockchain Worker
+  blockchain-worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: aidlink-blockchain-worker
+    command: node dist/workers/blockchain.worker.js
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://aidlink:aidlink_password@postgres:5432/aidlink?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SOROBAN_NETWORK_URL: ${SOROBAN_NETWORK_URL}
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - aidlink-network
+    restart: unless-stopped
+
+  # KYC Worker
+  kyc-worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: aidlink-kyc-worker
+    command: node dist/workers/kyc.worker.js
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://aidlink:aidlink_password@postgres:5432/aidlink?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - aidlink-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  aidlink-network:
+    driver: bridge
