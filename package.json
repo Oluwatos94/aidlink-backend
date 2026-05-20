@@ -82,8 +82,7 @@
     "eslint": "^8.56.0",
     "@typescript-eslint/eslint-plugin": "^6.19.1",
     "@typescript-eslint/parser": "^6.19.1",
-    "prettier": "^3.2.4",
-    "k6": "^0.48.0"
+    "prettier": "^3.2.4"
   },
   "engines": {
     "node": ">=18.0.0",
