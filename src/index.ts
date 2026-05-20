@@ -12,6 +12,7 @@ import { connectDatabase, disconnectDatabase } from './config/database';
 import { connectRedis, disconnectRedis } from './config/redis';
 import { apiLimiter } from './middleware/rateLimit';
 import { errorHandler, notFoundHandler } from './middleware/error';
+import { requestLogger, errorLogger } from './middleware/requestLogger';
 import authRoutes from './routes/auth.routes';
 import campaignRoutes from './routes/campaign.routes';
 import beneficiaryRoutes from './routes/beneficiary.routes';
@@ -26,6 +27,9 @@ import { initializeWebSocket } from './websocket/socket.server';
 
 const app: Application = express();
 const httpServer = createServer(app);
+
+// Request logging middleware
+app.use(requestLogger);
 
 // Security middleware
 app.use(helmet());
