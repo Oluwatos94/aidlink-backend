@@ -16,6 +16,7 @@ import campaignRoutes from './routes/campaign.routes';
 import beneficiaryRoutes from './routes/beneficiary.routes';
 import donationRoutes from './routes/donation.routes';
 import distributionRoutes from './routes/distribution.routes';
+import notificationRoutes from './routes/notification.routes';
 import { sorobanIndexer } from './blockchain/soroban.indexer';
 
 const app: Application = express();
@@ -60,6 +61,7 @@ app.use(`/api/${config.apiVersion}/campaigns`, campaignRoutes);
 app.use(`/api/${config.apiVersion}/beneficiaries`, beneficiaryRoutes);
 app.use(`/api/${config.apiVersion}/donations`, donationRoutes);
 app.use(`/api/${config.apiVersion}/distributions`, distributionRoutes);
+app.use(`/api/${config.apiVersion}/notifications`, notificationRoutes);
 
 // Swagger documentation
 const swaggerOptions = {
