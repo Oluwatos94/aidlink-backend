@@ -306,4 +306,45 @@ export class BeneficiaryService {
 
     return updated;
   }
+
+  static async getBeneficiaryByUserId(userId: string): Promise<any> {
+    const beneficiary = await prisma.beneficiary.findUnique({
+      where: { userId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            username: true,
+            status: true,
+          },
+        },
+        assignments: {
+          include: {
+            campaign: {
+              select: {
+                id: true,
+                title: true,
+                status: true,
+              },
+            },
+          },
+        },
+        distributions: {
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        },
+        kycSubmissions: {
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+        },
+      },
+    });
+
+    if (!beneficiary) {
+      throw new AppError('Beneficiary profile not found', 404);
+    }
+
+    return beneficiary;
+  }
 }

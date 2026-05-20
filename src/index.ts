@@ -13,6 +13,7 @@ import { apiLimiter } from './middleware/rateLimit';
 import { errorHandler, notFoundHandler } from './middleware/error';
 import authRoutes from './routes/auth.routes';
 import campaignRoutes from './routes/campaign.routes';
+import beneficiaryRoutes from './routes/beneficiary.routes';
 import { sorobanIndexer } from './blockchain/soroban.indexer';
 
 const app: Application = express();
@@ -54,6 +55,7 @@ app.get('/health', (req, res) => {
 // API routes
 app.use(`/api/${config.apiVersion}/auth`, authRoutes);
 app.use(`/api/${config.apiVersion}/campaigns`, campaignRoutes);
+app.use(`/api/${config.apiVersion}/beneficiaries`, beneficiaryRoutes);
 
 // Swagger documentation
 const swaggerOptions = {
