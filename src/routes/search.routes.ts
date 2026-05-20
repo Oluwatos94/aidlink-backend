@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { SearchController } from '../controllers/search.controller';
 import { authenticate } from '../middleware/auth';
+import { searchLimiter } from '../middleware/rateLimit';
 
 const router = Router();
 
@@ -12,6 +13,7 @@ const router = Router();
 router.get(
   '/campaigns',
   authenticate,
+  searchLimiter,
   SearchController.searchCampaigns
 );
 
@@ -23,6 +25,7 @@ router.get(
 router.get(
   '/donations',
   authenticate,
+  searchLimiter,
   SearchController.searchDonations
 );
 
@@ -34,6 +37,7 @@ router.get(
 router.get(
   '/beneficiaries',
   authenticate,
+  searchLimiter,
   SearchController.searchBeneficiaries
 );
 
@@ -45,6 +49,7 @@ router.get(
 router.get(
   '/global',
   authenticate,
+  searchLimiter,
   SearchController.globalSearch
 );
 
@@ -56,6 +61,7 @@ router.get(
 router.get(
   '/advanced',
   authenticate,
+  searchLimiter,
   SearchController.advancedSearch
 );
 

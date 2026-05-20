@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { DistributionController } from '../controllers/distribution.controller';
 import { authenticate } from '../middleware/auth';
+import { distributionLimiter } from '../middleware/rateLimit';
 import { z } from 'zod';
 import { validate } from '../middleware/validation';
 
@@ -36,6 +37,7 @@ const addProofSchema = z.object({
 router.post(
   '/',
   authenticate,
+  distributionLimiter,
   validate(createDistributionSchema),
   DistributionController.createDistribution
 );

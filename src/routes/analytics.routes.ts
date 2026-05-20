@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { AnalyticsController } from '../controllers/analytics.controller';
 import { authenticate } from '../middleware/auth';
+import { analyticsLimiter } from '../middleware/rateLimit';
 
 const router = Router();
 
@@ -12,6 +13,7 @@ const router = Router();
 router.get(
   '/campaign/:campaignId',
   authenticate,
+  analyticsLimiter,
   AnalyticsController.getCampaignAnalytics
 );
 
@@ -23,6 +25,7 @@ router.get(
 router.get(
   '/donor',
   authenticate,
+  analyticsLimiter,
   AnalyticsController.getDonorAnalytics
 );
 
@@ -34,6 +37,7 @@ router.get(
 router.get(
   '/organization/:organizationId',
   authenticate,
+  analyticsLimiter,
   AnalyticsController.getOrganizationAnalytics
 );
 
@@ -45,6 +49,7 @@ router.get(
 router.get(
   '/platform',
   authenticate,
+  analyticsLimiter,
   AnalyticsController.getPlatformAnalytics
 );
 
@@ -56,6 +61,7 @@ router.get(
 router.post(
   '/report/:reportType',
   authenticate,
+  analyticsLimiter,
   AnalyticsController.generateReport
 );
 

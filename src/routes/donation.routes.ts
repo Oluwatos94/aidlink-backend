@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { DonationController } from '../controllers/donation.controller';
 import { authenticate } from '../middleware/auth';
+import { donationLimiter } from '../middleware/rateLimit';
 import { z } from 'zod';
 import { validate } from '../middleware/validation';
 
@@ -30,6 +31,7 @@ const confirmDonationSchema = z.object({
 router.post(
   '/',
   authenticate,
+  donationLimiter,
   validate(createDonationSchema),
   DonationController.createDonation
 );

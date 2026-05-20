@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { CampaignController } from '../controllers/campaign.controller';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate } from '../middleware/auth';
+import { campaignCreateLimiter } from '../middleware/rateLimit';
+import { z } from 'zod';
 import { validate } from '../middleware/validation';
 import { campaignSchema } from '../utils/validation';
 
@@ -50,7 +52,7 @@ router.use(authenticate);
  *       201:
  *         description: Campaign created successfully
  */
-router.post('/', validate(campaignSchema), CampaignController.createCampaign);
+router.post('/', campaignCreateLimiter, validate(campaignSchema), CampaignController.createCampaign);
 
 /**
  * @swagger
