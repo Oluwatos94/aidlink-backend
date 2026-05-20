@@ -112,7 +112,7 @@ export class DonationService {
               title: true,
             },
           },
-          user: donation.userId
+          user: donations.userId
             ? {
                 select: {
                   id: true,

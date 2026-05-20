@@ -1,4 +1,4 @@
-import { Server, Api } from 'soroban-client';
+import { Server } from 'soroban-client';
 import prisma from '../config/database';
 import { TransactionType } from '@prisma/client';
 import logger from '../config/logger';
@@ -57,9 +57,9 @@ export class SorobanIndexer {
         orderBy: { blockNumber: 'desc' },
       });
 
-      const startBlock = lastIndexed?.blockNumber 
-        ? BigInt(lastIndexed.blockNumber) + 1n 
-        : latestLedger.sequence - 1000n; // Start from 1000 blocks ago if no history
+      const startBlock = lastIndexed?.blockNumber
+        ? BigInt(lastIndexed.blockNumber) + 1n
+        : BigInt(latestLedger.sequence) - 1000n; // Start from 1000 blocks ago if no history
 
       logger.info(`Indexing transactions from block ${startBlock} to ${latestLedger.sequence}`);
 

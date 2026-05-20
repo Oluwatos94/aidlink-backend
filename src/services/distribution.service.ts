@@ -82,8 +82,8 @@ export class DistributionService {
     return updated;
   }
 
-  static async getDistributions(campaignId?: string, beneficiaryId?: string, pagination: any): Promise<PaginatedResponse<any>> {
-    const { page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc' } = pagination;
+  static async getDistributions(campaignId?: string, beneficiaryId?: string, pagination?: any): Promise<PaginatedResponse<any>> {
+    const { page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc' } = pagination || {};
     const skip = (page - 1) * limit;
 
     const where: any = {};

@@ -344,7 +344,7 @@ export class CampaignService {
       donationCount: campaign._count.donations,
       beneficiaryCount: campaign._count.beneficiaries,
       distributionCount: campaign._count.distributions,
-      progress: Number((campaign.currentAmount / campaign.targetAmount) * 100).toFixed(2),
+      progress: Number(((campaign.currentAmount || 0) / (campaign.targetAmount || 1)) * 100).toFixed(2),
     };
   }
 }

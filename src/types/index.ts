@@ -88,3 +88,41 @@ export interface BeneficiaryFilters {
   riskScore?: number;
   search?: string;
 }
+
+export interface BeneficiaryInput {
+  firstName: string;
+  lastName: string;
+  dateOfBirth: Date;
+  country: string;
+  city: string;
+  address: string;
+  phone?: string;
+  needsDescription: string;
+}
+
+export interface CampaignInput {
+  title: string;
+  description: string;
+  imageUrl?: string;
+  targetAmount: number;
+  startDate: Date;
+  endDate?: Date;
+  organizationId: string;
+}
+
+export interface DonationInput {
+  campaignId: string;
+  amount: number;
+  currency?: string;
+  donorName?: string;
+  donorEmail?: string;
+  message?: string;
+  isAnonymous?: boolean;
+}
+
+export interface DistributionInput {
+  campaignId: string;
+  beneficiaryId: string;
+  amount: number;
+  description?: string;
+}

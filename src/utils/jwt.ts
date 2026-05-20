@@ -5,13 +5,13 @@ import { JWTPayload } from '../types';
 export class JWTUtils {
   static generateAccessToken(payload: JWTPayload): string {
     return jwt.sign(payload, config.jwt.secret, {
-      expiresIn: config.jwt.accessExpiry,
+      expiresIn: config.jwt.accessExpiry as string,
     });
   }
 
   static generateRefreshToken(payload: JWTPayload): string {
     return jwt.sign(payload, config.jwt.secret, {
-      expiresIn: config.jwt.refreshExpiry,
+      expiresIn: config.jwt.refreshExpiry as string,
     });
   }
 

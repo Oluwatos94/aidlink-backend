@@ -269,7 +269,6 @@ export class SearchService {
           id: true,
           title: true,
           status: true,
-          entityType: 'campaign' as const,
         },
       }),
       prisma.donation.findMany({
@@ -284,7 +283,6 @@ export class SearchService {
           id: true,
           amount: true,
           status: true,
-          entityType: 'donation' as const,
         },
       }),
       prisma.beneficiary.findMany({
@@ -300,7 +298,6 @@ export class SearchService {
           firstName: true,
           lastName: true,
           status: true,
-          entityType: 'beneficiary' as const,
         },
       }),
     ]);
