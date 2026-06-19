@@ -3,6 +3,22 @@ import { BeneficiaryInput, BeneficiaryFilters, PaginatedResponse } from '../type
 import { BeneficiaryStatus, Role, KYCStatus } from '@prisma/client';
 import { AppError } from '../middleware/error';
 import logger from '../config/logger';
+import { Queue } from 'bullmq';
+import { config } from '../config';
+
+// KYC queue instance
+const kycQueue = new Queue('kyc-queue', {
+  connection: {
+    host: config.bullmq.redisHost,
+    port: config.bullmq.redisPort,
+    password: config.bullmq.redisPassword,
+  },
+});
+
+async function enqueueKYCJob(type: string, data: Record<string, unknown>): Promise<void> {
+  await kycQueue.add(type, { type, data });
+  logger.info(`KYC job enqueued: ${type}`, data);
+}
 
 export class BeneficiaryService {
   static async createBeneficiary(data: BeneficiaryInput, userId: string): Promise<any> {
@@ -239,6 +255,18 @@ export class BeneficiaryService {
       throw new AppError('You can only submit KYC for your own profile', 403);
     }
 
+    // Prevent duplicate active submissions
+    const activeSubmission = await prisma.kYCSubmission.findFirst({
+      where: {
+        beneficiaryId,
+        status: { in: [KYCStatus.PENDING, KYCStatus.UNDER_REVIEW] },
+      },
+    });
+
+    if (activeSubmission) {
+      throw new AppError('An active KYC submission already exists. Please wait for the current review to complete.', 409);
+    }
+
     const submission = await prisma.kYCSubmission.create({
       data: {
         userId,
@@ -250,10 +278,24 @@ export class BeneficiaryService {
 
     logger.info(`KYC submitted: ${submission.id} for beneficiary ${beneficiaryId}`);
 
+    // Enqueue background jobs for async processing
+    await enqueueKYCJob('CALCULATE_RISK_SCORE', { beneficiaryId });
+    await enqueueKYCJob('AUTO_REVIEW_KYC', {
+      beneficiaryId,
+      submissionId: submission.id,
+      systemUserId: userId,
+    });
+
     return submission;
   }
 
-  static async reviewKYC(submissionId: string, status: KYCStatus, reviewNotes: string, userId: string, userRole: Role): Promise<any> {
+  static async reviewKYC(
+    submissionId: string,
+    status: KYCStatus,
+    reviewNotes: string,
+    userId: string,
+    userRole: Role
+  ): Promise<any> {
     const submission = await prisma.kYCSubmission.findUnique({
       where: { id: submissionId },
       include: { beneficiary: true },
@@ -263,13 +305,14 @@ export class BeneficiaryService {
       throw new AppError('KYC submission not found', 404);
     }
 
-    // Check permissions
     if (userRole !== Role.ADMIN && userRole !== Role.VERIFIER) {
       throw new AppError('You do not have permission to review KYC submissions', 403);
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
-      // Update submission
+    // Compute fraud score before persisting
+    const fraudScore = await BeneficiaryService.computeFraudScore(submission);
+
+    const updated = await prisma.$transaction(async (tx: any) => {
       const updatedSubmission = await tx.kYCSubmission.update({
         where: { id: submissionId },
         data: {
@@ -277,10 +320,11 @@ export class BeneficiaryService {
           reviewNotes,
           reviewedBy: userId,
           reviewedAt: new Date(),
+          fraudScore,
         },
       });
 
-      // Update beneficiary status if approved
+      // Status transition mapping
       if (status === KYCStatus.APPROVED && submission.beneficiary) {
         await tx.beneficiary.update({
           where: { id: submission.beneficiaryId! },
@@ -293,18 +337,67 @@ export class BeneficiaryService {
       } else if (status === KYCStatus.REJECTED && submission.beneficiary) {
         await tx.beneficiary.update({
           where: { id: submission.beneficiaryId! },
-          data: {
-            status: BeneficiaryStatus.REJECTED,
-          },
+          data: { status: BeneficiaryStatus.REJECTED },
+        });
+      } else if (status === KYCStatus.EXPIRED && submission.beneficiary) {
+        // Reset to PENDING so beneficiary can re-submit
+        await tx.beneficiary.update({
+          where: { id: submission.beneficiaryId! },
+          data: { status: BeneficiaryStatus.PENDING },
         });
       }
 
       return updatedSubmission;
     });
 
-    logger.info(`KYC reviewed: ${submissionId} with status ${status} by user ${userId}`);
+    // Enqueue fraud detection for high-risk submissions
+    if (fraudScore > 50) {
+      await enqueueKYCJob('FRAUD_DETECTION', {
+        beneficiaryId: submission.beneficiaryId,
+        submissionId,
+        fraudScore,
+      });
+    }
+
+    logger.info(`KYC reviewed: ${submissionId} with status ${status} by user ${userId}, fraudScore: ${fraudScore}`);
 
     return updated;
+  }
+
+  private static async computeFraudScore(submission: any): Promise<number> {
+    let fraudScore = 0;
+
+    // Factor 1: prior rejections
+    const priorRejections = await prisma.kYCSubmission.count({
+      where: {
+        beneficiaryId: submission.beneficiaryId,
+        status: KYCStatus.REJECTED,
+      },
+    });
+    if (priorRejections > 0) fraudScore += priorRejections * 20;
+
+    // Factor 2: document URL reuse across rejected submissions
+    const docReuse = await prisma.kYCSubmission.count({
+      where: {
+        documentUrl: submission.documentUrl,
+        status: KYCStatus.REJECTED,
+        id: { not: submission.id },
+      },
+    });
+    if (docReuse > 0) fraudScore += 20;
+
+    // Factor 3: excessive submissions in past 7 days
+    const recentSubmissions = await prisma.kYCSubmission.count({
+      where: {
+        beneficiaryId: submission.beneficiaryId,
+        createdAt: {
+          gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+        },
+      },
+    });
+    if (recentSubmissions > 2) fraudScore += 15;
+
+    return Math.min(Math.max(fraudScore, 0), 100);
   }
 
   static async getBeneficiaryByUserId(userId: string): Promise<any> {
