@@ -1,3 +1,5 @@
+/// <reference types="jest" />
+
 const prismaMock = {
   campaign: {
     findUnique: jest.fn(),
@@ -31,6 +33,7 @@ const prismaMock = {
     create: jest.fn(),
     update: jest.fn(),
     count: jest.fn(),
+    groupBy: jest.fn().mockResolvedValue([]),
   },
   beneficiaryAssignment: {
     upsert: jest.fn(),
