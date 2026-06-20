@@ -70,25 +70,19 @@ export const config = {
     healthCheckInterval: parseInt(process.env.HEALTH_CHECK_INTERVAL || '30000', 10),
   },
 
-  storage: {
-    provider: (process.env.STORAGE_PROVIDER || 'local') as 'local' | 's3' | 'azure',
-    aws: {
-      region: process.env.AWS_REGION || 'us-east-1',
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-      bucket: process.env.AWS_S3_BUCKET,
-      baseUrl: process.env.AWS_S3_BASE_URL,
-    },
-    azure: {
-      accountName: process.env.AZURE_STORAGE_ACCOUNT_NAME,
-      accountKey: process.env.AZURE_STORAGE_ACCOUNT_KEY,
-      container: process.env.AZURE_STORAGE_CONTAINER,
-    },
-    local: {
-      uploadDir: process.env.LOCAL_UPLOAD_DIR || 'uploads',
-      baseUrl: process.env.LOCAL_UPLOAD_BASE_URL ||
-        `http://localhost:${process.env.PORT || 3000}/uploads`,
-    },
+  moderation: {
+    // Feature flag: when false, the worker still records reports but never
+    // auto-suspends. Admins can always suspend/reinstate manually.
+    autoSuspendEnabled: process.env.MODERATION_AUTO_SUSPEND_ENABLED === 'true',
+    // Low-verification rule: campaigns whose owner verification score stays
+    // below `verificationScoreThreshold` for `verificationGraceDays` get suspended.
+    verificationScoreThreshold: parseInt(process.env.MODERATION_VERIFICATION_SCORE_THRESHOLD || '40', 10),
+    verificationGraceDays: parseInt(process.env.MODERATION_VERIFICATION_GRACE_DAYS || '7', 10),
+    // Fraud rule: N independent fraud reports within the rolling window.
+    fraudReportThreshold: parseInt(process.env.MODERATION_FRAUD_REPORT_THRESHOLD || '3', 10),
+    fraudReportWindowHours: parseInt(process.env.MODERATION_FRAUD_REPORT_WINDOW_HOURS || '24', 10),
+    // Notify donors when a campaign is suspended for a fraud-related reason.
+    notifyDonorsOnFraudSuspension: process.env.MODERATION_NOTIFY_DONORS_ON_FRAUD !== 'false',
   },
 };
 

@@ -18,11 +18,11 @@ const kycWorker = new Worker(
           logger.info(`Risk score calculated for beneficiary ${data.beneficiaryId}: ${riskScore}`);
           return { riskScore };
 
-        case 'AUTO_REVIEW_KYC':
-          // Automated KYC review based on risk score
-          const beneficiary = await BeneficiaryService.calculateRiskScore(data.beneficiaryId);
+        case 'AUTO_REVIEW_KYC': {
+          // calculateRiskScore() returns a number, not a beneficiary object
+          const riskScore = await BeneficiaryService.calculateRiskScore(data.beneficiaryId);
 
-          if (beneficiary < 30) {
+          if (riskScore < 30) {
             // Low risk - auto approve
             await BeneficiaryService.reviewKYC(
               data.submissionId,
@@ -31,8 +31,9 @@ const kycWorker = new Worker(
               data.systemUserId,
               'ADMIN'
             );
-            return { status: 'approved' };
-          } else if (beneficiary > 70) {
+            logger.info(`Auto-approved submission ${data.submissionId}, riskScore: ${riskScore}`);
+            return { status: 'approved', riskScore };
+          } else if (riskScore > 70) {
             // High risk - auto reject
             await BeneficiaryService.reviewKYC(
               data.submissionId,
@@ -41,10 +42,14 @@ const kycWorker = new Worker(
               data.systemUserId,
               'ADMIN'
             );
-            return { status: 'rejected' };
+            logger.info(`Auto-rejected submission ${data.submissionId}, riskScore: ${riskScore}`);
+            return { status: 'rejected', riskScore };
           }
+
           // Medium risk - requires manual review
-          return { status: 'manual_review_required' };
+          logger.info(`Manual review required for submission ${data.submissionId}, riskScore: ${riskScore}`);
+          return { status: 'manual_review_required', riskScore };
+        }
 
         case 'FRAUD_DETECTION':
           // Run fraud detection algorithms
