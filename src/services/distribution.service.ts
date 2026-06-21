@@ -3,7 +3,7 @@ import { DistributionInput, PaginatedResponse } from '../types';
 import { DistributionStatus, Role } from '@prisma/client';
 import { AppError } from '../middleware/error';
 import logger from '../config/logger';
-import { AnalyticsService } from './analytics.service';
+import { dispatchWebhookEvent } from '../controllers/webhook.controller';
 
 export class DistributionService {
   static async createDistribution(data: DistributionInput, userId: string, userRole: Role): Promise<any> {
@@ -80,11 +80,14 @@ export class DistributionService {
 
     logger.info(`Distribution confirmed: ${id} with tx ${txHash}`);
 
-    // Fire-and-forget: update campaign analytics cache
-    const amount = Number(distribution.amount);
-    AnalyticsService.incrementDistributionStats(distribution.campaignId, amount).catch((err) =>
-      logger.error('Failed to update campaign distribution stats cache', err)
-    );
+    dispatchWebhookEvent('DISTRIBUTION_COMPLETED', {
+      distributionId: id,
+      campaignId: distribution.campaignId,
+      beneficiaryId: distribution.beneficiaryId,
+      amount: updated.amount,
+      currency: updated.currency,
+      blockchainTxHash: txHash,
+    }).catch((err) => logger.error('Webhook dispatch error (distribution.completed):', err));
 
     return updated;
   }
