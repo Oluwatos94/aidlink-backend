@@ -27,6 +27,7 @@ import organizationRoutes from './routes/organization.routes';
 import webhookRoutes from './routes/webhook.routes';
 import { sorobanIndexer } from './blockchain/soroban.indexer';
 import { initializeWebSocket } from './websocket/socket.server';
+import { stopRecoveryWorker } from './workers/recovery.worker';
 
 const app: Application = express();
 const httpServer = createServer(app);
@@ -150,6 +151,11 @@ const startServer = async (): Promise<void> => {
       .then(() => logger.info('Webhook delivery worker started'))
       .catch((error) => logger.error('Failed to start webhook worker:', error));
 
+    // Start recovery worker (auto-retry scheduled cases)
+    import('./workers/recovery.worker.js')
+      .then(({ startRecoveryWorker }) => startRecoveryWorker())
+      .catch((error) => logger.error('Failed to start recovery worker:', error));
+
     // Start HTTP server
     httpServer.listen(config.port, () => {
       logger.info(`Server running on port ${config.port} in ${config.env} mode`);
@@ -169,6 +175,9 @@ const gracefulShutdown = async (signal: string): Promise<void> => {
   try {
     // Stop blockchain indexer
     await sorobanIndexer.stop();
+
+    // Stop recovery worker
+    stopRecoveryWorker();
 
     // Disconnect from database
     await disconnectDatabase();
