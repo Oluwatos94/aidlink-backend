@@ -32,32 +32,51 @@ enum UserStatus {
 }
 
 model User {
-  id            String     @id @default(cuid())
-  email         String     @unique
-  username      String?    @unique
-  passwordHash  String?
-  walletAddress String?    @unique
-  role          Role       @default(DONOR)
-  status        UserStatus @default(PENDING_VERIFICATION)
-  emailVerified Boolean    @default(false)
-  lastLogin     DateTime?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  id                  String     @id @default(cuid())
+  email               String     @unique
+  username            String?    @unique
+  passwordHash        String?
+  walletAddress       String?    @unique
+  role                Role       @default(DONOR)
+  status              UserStatus @default(PENDING_VERIFICATION)
+  emailVerified       Boolean    @default(false)
+  verificationToken   String?    @unique
+  verificationExpiry  DateTime?
+  failedVerifyAttempts Int       @default(0)
+  lastLogin           DateTime?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
 
   // Relations
-  sessions       Session[]
-  organizations  Organization?
-  beneficiary    Beneficiary?
-  donations      Donation[]
-  campaigns      Campaign[]
-  auditLogs      AuditLog[]
-  notifications  Notification[]
-  kycSubmissions KYCSubmission[]
+  sessions            Session[]
+  organizations       Organization?
+  beneficiary         Beneficiary?
+  donations           Donation[]
+  campaigns           Campaign[]
+  auditLogs           AuditLog[]
+  notifications       Notification[]
+  kycSubmissions      KYCSubmission[]
+  verificationLogs    VerificationLog[]
 
   @@index([email])
   @@index([walletAddress])
   @@index([role])
   @@index([status])
+}
+
+model VerificationLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String   // 'SENT' | 'VERIFIED' | 'EXPIRED' | 'RESENT' | 'FAILED'
+  tokenHash  String?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
 }
 
 model Session {

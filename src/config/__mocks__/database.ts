@@ -48,6 +48,19 @@ const prismaMock = {
     findUnique: jest.fn(),
     findMany: jest.fn(),
     count: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+  },
+  verificationLog: {
+    create: jest.fn(),
+    findMany: jest.fn(),
+  },
+  session: {
+    create: jest.fn(),
+    findUnique: jest.fn(),
+    update: jest.fn(),
+    delete: jest.fn(),
+    deleteMany: jest.fn(),
   },
   $transaction: jest.fn().mockImplementation(async (cb) => {
     if (typeof cb === 'function') {

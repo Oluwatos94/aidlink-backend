@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { DonationController } from '../controllers/donation.controller';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requireVerified } from '../middleware/auth';
 import { donationLimiter } from '../middleware/rateLimit';
 import { z } from 'zod';
 import { validate } from '../middleware/validation';
@@ -26,11 +26,12 @@ const confirmDonationSchema = z.object({
 /**
  * @route   POST /api/v1/donations
  * @desc    Create a new donation
- * @access  Private
+ * @access  Private (verified users only)
  */
 router.post(
   '/',
   authenticate,
+  requireVerified,
   donationLimiter,
   validate(createDonationSchema),
   DonationController.createDonation
