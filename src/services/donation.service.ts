@@ -3,6 +3,7 @@ import { DonationInput, DonationFilters, PaginatedResponse } from '../types';
 import { DonationStatus, Role } from '@prisma/client';
 import { AppError } from '../middleware/error';
 import logger from '../config/logger';
+import { dispatchWebhookEvent } from '../controllers/webhook.controller';
 
 export class DonationService {
   static async createDonation(data: DonationInput, userId?: string): Promise<any> {
@@ -69,6 +70,14 @@ export class DonationService {
     });
 
     logger.info(`Donation confirmed: ${id} with tx ${txHash}`);
+
+    dispatchWebhookEvent('DONATION_CONFIRMED', {
+      donationId: id,
+      campaignId: donation.campaignId,
+      amount: updated.amount,
+      currency: updated.currency,
+      blockchainTxHash: txHash,
+    }).catch((err) => logger.error('Webhook dispatch error (donation.confirmed):', err));
 
     return updated;
   }

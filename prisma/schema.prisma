@@ -608,6 +608,69 @@ model AuditLog {
 }
 
 // ============================================
+// WEBHOOKS
+// ============================================
+
+enum WebhookEventType {
+  DONATION_CONFIRMED
+  DISTRIBUTION_COMPLETED
+  CAMPAIGN_MILESTONE_REACHED
+  KYC_STATUS_CHANGED
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  DISABLED
+}
+
+model WebhookSubscription {
+  id          String    @id @default(cuid())
+  name        String
+  url         String
+  secret      String
+  events      WebhookEventType[]
+  active      Boolean   @default(true)
+  description String?   @db.Text
+  createdBy   String
+  lastSuccessAt DateTime?
+  failureCount  Int     @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  webhookEvents WebhookEvent[]
+
+  @@index([active])
+  @@index([createdBy])
+}
+
+model WebhookEvent {
+  id             String               @id @default(cuid())
+  webhookId      String
+  eventType      WebhookEventType
+  payload        Json
+  status         WebhookDeliveryStatus @default(PENDING)
+  attempts       Int                  @default(0)
+  maxAttempts    Int                  @default(5)
+  lastAttemptAt  DateTime?
+  nextRetryAt    DateTime?
+  responseCode   Int?
+  responseBody   String?              @db.Text
+  errorMessage   String?              @db.Text
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  webhook WebhookSubscription @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId])
+  @@index([eventType])
+  @@index([status])
+  @@index([nextRetryAt])
+  @@index([createdAt])
+}
+
+// ============================================
 // QUEUE JOBS
 // ============================================
 
