@@ -3,6 +3,7 @@ import { DistributionInput, PaginatedResponse } from '../types';
 import { DistributionStatus, Role } from '@prisma/client';
 import { AppError } from '../middleware/error';
 import logger from '../config/logger';
+import { AnalyticsService } from './analytics.service';
 
 export class DistributionService {
   static async createDistribution(data: DistributionInput, userId: string, userRole: Role): Promise<any> {
@@ -78,6 +79,12 @@ export class DistributionService {
     });
 
     logger.info(`Distribution confirmed: ${id} with tx ${txHash}`);
+
+    // Fire-and-forget: update campaign analytics cache
+    const amount = Number(distribution.amount);
+    AnalyticsService.incrementDistributionStats(distribution.campaignId, amount).catch((err) =>
+      logger.error('Failed to update campaign distribution stats cache', err)
+    );
 
     return updated;
   }
@@ -158,6 +165,11 @@ export class DistributionService {
     });
 
     logger.info(`Distribution status updated: ${id} to ${status} by user ${userId}`);
+
+    // Invalidate cache when distribution status changes
+    AnalyticsService.invalidateCampaignCache(distribution.campaignId).catch((err) =>
+      logger.error('Failed to invalidate campaign cache on status update', err)
+    );
 
     return updated;
   }

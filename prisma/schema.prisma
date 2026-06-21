@@ -626,6 +626,10 @@ enum JobType {
   DISTRIBUTION_PROCESSING
   REPORT_GENERATION
   CACHE_INVALIDATION
+  ANALYTICS_HOURLY
+  ANALYTICS_MONTHLY
+  ANALYTICS_REALTIME
+  ANALYTICS_TRENDING_REFRESH
 }
 
 model QueueJob {
@@ -744,4 +748,79 @@ model FraudReport {
   @@index([campaignId])
   @@index([reporterId])
   @@index([createdAt])
+}
+
+// ============================================
+// ANALYTICS ROLLUPS & TRENDING
+// ============================================
+
+model CampaignHourlyStat {
+  id            String   @id @default(cuid())
+  campaignId    String
+  hour          DateTime
+  donationCount Int      @default(0)
+  donationVolume Decimal @default(0) @db.Decimal(20, 8)
+  uniqueDonors  Int      @default(0)
+  distributionCount Int  @default(0)
+  itemsDistributed   Int  @default(0)
+  distributionVolume  Decimal @default(0) @db.Decimal(20, 8)
+  newBeneficiaries    Int  @default(0)
+  activeDonors        Int  @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([campaignId, hour])
+  @@index([campaignId])
+  @@index([hour])
+}
+
+model CampaignMonthlyStat {
+  id                String   @id @default(cuid())
+  campaignId        String
+  month             DateTime
+  donationCount     Int      @default(0)
+  donationVolume    Decimal  @default(0) @db.Decimal(20, 8)
+  uniqueDonors      Int      @default(0)
+  distributionCount Int      @default(0)
+  itemsDistributed  Int      @default(0)
+  distributionVolume Decimal  @default(0) @db.Decimal(20, 8)
+  donorGrowth       Int      @default(0)
+  distributionReach Int      @default(0)
+  campaignActivity  Int      @default(0)
+  activeDonors      Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([campaignId, month])
+  @@index([campaignId])
+  @@index([month])
+}
+
+model CampaignTrending {
+  id              String   @id @default(cuid())
+  campaignId      String
+  trendScore      Decimal  @default(0) @db.Decimal(20, 8)
+  donationVelocity Decimal  @default(0) @db.Decimal(20, 8)
+  donorGrowth     Int      @default(0)
+  distributionImpact Decimal @default(0) @db.Decimal(20, 8)
+  period          String   @default("last24h")
+  rank            Int      @default(0)
+  refreshedAt     DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([campaignId, period])
+  @@index([trendScore])
+  @@index([period])
+  @@index([rank])
+}
+
+model RollupTracker {
+  id                     String   @id @default(cuid())
+  type                   String   @unique
+  lastProcessedTimestamp DateTime
+  lastHour               DateTime?
+  lastMonth              DateTime?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 }

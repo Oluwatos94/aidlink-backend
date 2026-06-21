@@ -143,6 +143,15 @@ const startServer = async (): Promise<void> => {
         .catch((error) => logger.error('Failed to start moderation worker:', error));
     }
 
+    // Start analytics worker for rollups, trending refresh, and cache updates.
+    // Feature-flagged via ANALYTICS_WORKER_ENABLED.
+    if (config.analytics.analyticsWorkerEnabled) {
+      import('./workers/analytics.worker.js')
+        .then(({ scheduleAnalyticsJobs }) => scheduleAnalyticsJobs())
+        .then(() => logger.info('Analytics worker started'))
+        .catch((error) => logger.error('Failed to start analytics worker:', error));
+    }
+
     // Start HTTP server
     httpServer.listen(config.port, () => {
       logger.info(`Server running on port ${config.port} in ${config.env} mode`);

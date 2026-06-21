@@ -3,6 +3,7 @@ import { DonationInput, DonationFilters, PaginatedResponse } from '../types';
 import { DonationStatus, Role } from '@prisma/client';
 import { AppError } from '../middleware/error';
 import logger from '../config/logger';
+import { AnalyticsService } from './analytics.service';
 
 export class DonationService {
   static async createDonation(data: DonationInput, userId?: string): Promise<any> {
@@ -69,6 +70,12 @@ export class DonationService {
     });
 
     logger.info(`Donation confirmed: ${id} with tx ${txHash}`);
+
+    // Fire-and-forget: update campaign analytics cache
+    const amount = Number(donation.amount);
+    AnalyticsService.incrementDonationStats(donation.campaignId, amount).catch((err) =>
+      logger.error('Failed to update campaign donation stats cache', err)
+    );
 
     return updated;
   }
@@ -209,6 +216,12 @@ export class DonationService {
     });
 
     logger.info(`Donation refunded: ${id} by user ${userId}`);
+
+    // Update cache: decrement donation count/amount on refund
+    const amount = Number(donation.amount);
+    AnalyticsService.invalidateCampaignCache(donation.campaignId).catch((err) =>
+      logger.error('Failed to invalidate campaign cache on refund', err)
+    );
 
     return updated;
   }
