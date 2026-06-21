@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { AdminController } from '../controllers/admin.controller';
 import { ModerationController } from '../controllers/moderation.controller';
 import { OrganizationController } from '../controllers/organization.controller';
-import { authenticate } from '../middleware/auth';
+import { MilestoneController } from '../controllers/milestone.controller';
+import { authenticate, authorize } from '../middleware/auth';
 import { z } from 'zod';
 import { validate } from '../middleware/validation';
 import {
@@ -11,6 +12,7 @@ import {
   resolveAppealSchema,
   organizationReviewSchema,
   organizationRejectSchema,
+  milestoneReviewSchema,
 } from '../utils/validation';
 
 const router = Router();
@@ -184,6 +186,69 @@ router.post(
   authenticate,
   validate(organizationRejectSchema),
   OrganizationController.requestMoreInfo
+);
+
+// ─── Milestone verification (Admin / Verifier) ─────────────────
+
+/**
+ * @route   GET /api/v1/admin/milestone-submissions
+ * @desc    List submissions awaiting review (filterable)
+ * @access  Private (Admin, Verifier)
+ */
+router.get(
+  '/milestone-submissions',
+  authenticate,
+  authorize('ADMIN', 'VERIFIER'),
+  MilestoneController.listAdminSubmissions
+);
+
+/**
+ * @route   GET /api/v1/admin/milestone-submissions/:submissionId
+ * @desc    Get full submission details + reviews + history
+ * @access  Private (Admin, Verifier)
+ */
+router.get(
+  '/milestone-submissions/:submissionId',
+  authenticate,
+  authorize('ADMIN', 'VERIFIER'),
+  MilestoneController.getAdminSubmission
+);
+
+/**
+ * @route   POST /api/v1/admin/milestone-submissions/:submissionId/reviews
+ * @desc    Submit a review decision for a submission
+ * @access  Private (Admin, Verifier)
+ */
+router.post(
+  '/milestone-submissions/:submissionId/reviews',
+  authenticate,
+  authorize('ADMIN', 'VERIFIER'),
+  validate(milestoneReviewSchema),
+  MilestoneController.createReview
+);
+
+/**
+ * @route   GET /api/v1/admin/milestone-submissions/:submissionId/reviews
+ * @desc    List all reviews for a submission
+ * @access  Private (Admin, Verifier)
+ */
+router.get(
+  '/milestone-submissions/:submissionId/reviews',
+  authenticate,
+  authorize('ADMIN', 'VERIFIER'),
+  MilestoneController.listSubmissionReviews
+);
+
+/**
+ * @route   GET /api/v1/admin/milestones/:milestoneId/verification-status
+ * @desc    Get current verification status, history, and metrics
+ * @access  Private (Admin, Verifier)
+ */
+router.get(
+  '/milestones/:milestoneId/verification-status',
+  authenticate,
+  authorize('ADMIN', 'VERIFIER'),
+  MilestoneController.getMilestoneVerificationStatus
 );
 
 export default router;
