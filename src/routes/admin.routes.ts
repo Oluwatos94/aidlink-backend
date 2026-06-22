@@ -3,6 +3,7 @@ import { AdminController } from '../controllers/admin.controller';
 import { ModerationController } from '../controllers/moderation.controller';
 import { OrganizationController } from '../controllers/organization.controller';
 import { MilestoneController } from '../controllers/milestone.controller';
+import { RecoveryController } from '../controllers/recovery.controller';
 import { authenticate, authorize } from '../middleware/auth';
 import { z } from 'zod';
 import { validate } from '../middleware/validation';
@@ -190,11 +191,6 @@ router.post(
 
 // ─── Milestone verification (Admin / Verifier) ─────────────────
 
-/**
- * @route   GET /api/v1/admin/milestone-submissions
- * @desc    List submissions awaiting review (filterable)
- * @access  Private (Admin, Verifier)
- */
 router.get(
   '/milestone-submissions',
   authenticate,
@@ -202,11 +198,6 @@ router.get(
   MilestoneController.listAdminSubmissions
 );
 
-/**
- * @route   GET /api/v1/admin/milestone-submissions/:submissionId
- * @desc    Get full submission details + reviews + history
- * @access  Private (Admin, Verifier)
- */
 router.get(
   '/milestone-submissions/:submissionId',
   authenticate,
@@ -214,11 +205,6 @@ router.get(
   MilestoneController.getAdminSubmission
 );
 
-/**
- * @route   POST /api/v1/admin/milestone-submissions/:submissionId/reviews
- * @desc    Submit a review decision for a submission
- * @access  Private (Admin, Verifier)
- */
 router.post(
   '/milestone-submissions/:submissionId/reviews',
   authenticate,
@@ -227,11 +213,6 @@ router.post(
   MilestoneController.createReview
 );
 
-/**
- * @route   GET /api/v1/admin/milestone-submissions/:submissionId/reviews
- * @desc    List all reviews for a submission
- * @access  Private (Admin, Verifier)
- */
 router.get(
   '/milestone-submissions/:submissionId/reviews',
   authenticate,
@@ -239,16 +220,29 @@ router.get(
   MilestoneController.listSubmissionReviews
 );
 
-/**
- * @route   GET /api/v1/admin/milestones/:milestoneId/verification-status
- * @desc    Get current verification status, history, and metrics
- * @access  Private (Admin, Verifier)
- */
 router.get(
   '/milestones/:milestoneId/verification-status',
   authenticate,
   authorize('ADMIN', 'VERIFIER'),
   MilestoneController.getMilestoneVerificationStatus
 );
+
+// ─── Recovery Workflow (Admin) ───────────────────────────────────
+
+router.get('/recoveries/reconciliation', authenticate, RecoveryController.reconciliation);
+router.get('/recoveries', authenticate, RecoveryController.listCases);
+router.get('/recoveries/:id', authenticate, RecoveryController.getCase);
+
+router.post('/recoveries/failed-refund', authenticate, RecoveryController.createFailedRefundCase);
+router.post('/recoveries/failed-distribution', authenticate, RecoveryController.createFailedDistributionCase);
+router.post('/recoveries/:id/donor-credit', authenticate, RecoveryController.issueDonorCredit);
+
+router.post('/refunds/:id/retry', authenticate, RecoveryController.retryRefund);
+router.post('/refunds/:id/update-destination', authenticate, RecoveryController.updateRefundDestination);
+
+router.post('/distributions/:id/retry', authenticate, RecoveryController.retryDistribution);
+router.post('/distributions/:id/flag-recovery', authenticate, RecoveryController.flagDistributionRecovery);
+
+router.post('/campaigns/:id/settle', authenticate, RecoveryController.settleCampaign);
 
 export default router;
