@@ -55,6 +55,7 @@ model User {
   auditLogs      AuditLog[]
   notifications  Notification[]
   kycSubmissions KYCSubmission[]
+  donorCredits   DonorCredit[]
 
   @@index([email])
   @@index([walletAddress])
@@ -90,42 +91,103 @@ enum OrganizationStatus {
   REJECTED
 }
 
+enum OrganizationVerificationStatus {
+  UNVERIFIED
+  PENDING_VERIFICATION
+  VERIFIED
+  REJECTED
+  SUSPENDED
+  MORE_INFO_REQUESTED
+}
+
+enum BankAccountVerificationStatus {
+  UNVERIFIED
+  PENDING_VERIFICATION
+  VERIFIED
+  REJECTED
+  ARCHIVED
+}
+
 model Organization {
   id                 String             @id @default(cuid())
   userId             String             @unique
   name               String
+  email              String?
+  country            String?
   description        String?
   website            String?
   logo               String?
   registrationNumber String?
   taxId              String?
+  representativeContact Json?
+  address            Json?
+  legalDocuments     Json?
+  supportingMetadata Json?
   status             OrganizationStatus @default(PENDING)
+  verificationStatus OrganizationVerificationStatus @default(UNVERIFIED)
+  verificationRequestedAt DateTime?
   verifiedAt         DateTime?
+  verificationNotes  String?            @db.Text
+  deletedAt          DateTime?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   campaigns    Campaign[]
   bankAccounts BankAccount[]
+  verificationEvents OrganizationVerificationEvent[]
 
   @@index([userId])
   @@index([status])
+  @@index([verificationStatus])
+  @@index([deletedAt])
 }
 
 model BankAccount {
-  id             String   @id @default(cuid())
-  organizationId String
-  bankName       String
-  accountNumber  String
-  routingNumber  String
-  accountType    String
-  isPrimary      Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                 String                        @id @default(cuid())
+  organizationId     String
+  accountHolderName  String?
+  bankName           String
+  accountNumber      String
+  routingNumber      String
+  routingCode        String?
+  iban               String?
+  accountType        String
+  currency           String                        @default("USD")
+  branchCode         String?
+  country            String?
+  verificationStatus BankAccountVerificationStatus @default(UNVERIFIED)
+  verificationNotes  String?                       @db.Text
+  verifiedAt         DateTime?
+  archivedAt         DateTime?
+  isPrimary          Boolean                       @default(false)
+  metadata           Json?
+  createdAt          DateTime                      @default(now())
+  updatedAt          DateTime                      @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+  @@index([verificationStatus])
+  @@index([archivedAt])
+}
+
+model OrganizationVerificationEvent {
+  id             String                       @id @default(cuid())
+  organizationId String
+  actorId        String?
+  status         OrganizationVerificationStatus
+  reason         String?                      @db.Text
+  evidence       Json?
+  metadata       Json?
+  createdAt      DateTime                     @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([actorId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 // ============================================
@@ -405,11 +467,23 @@ enum NotificationType {
   DISTRIBUTION_SENT
   KYC_APPROVED
   KYC_REJECTED
+  ORGANIZATION_PROFILE_UPDATED
+  ORGANIZATION_VERIFICATION_SUBMITTED
+  ORGANIZATION_VERIFICATION_APPROVED
+  ORGANIZATION_VERIFICATION_REJECTED
+  ORGANIZATION_VERIFICATION_INFO_REQUESTED
+  BANK_ACCOUNT_ADDED
+  BANK_ACCOUNT_REVIEW_REQUIRED
   SYSTEM_ALERT
   SECURITY_ALERT
   CAMPAIGN_SUSPENDED
   CAMPAIGN_REINSTATED
   APPEAL_UPDATE
+  REFUND_FAILED
+  REFUND_RECOVERED
+  DISTRIBUTION_FAILED
+  CAMPAIGN_SETTLEMENT
+  DONOR_CREDIT_ISSUED
 }
 
 enum NotificationStatus {
@@ -510,6 +584,17 @@ enum AuditAction {
   KYC_SUBMITTED
   KYC_APPROVED
   KYC_REJECTED
+  ORGANIZATION_CREATED
+  ORGANIZATION_UPDATED
+  ORGANIZATION_DELETED
+  ORGANIZATION_VERIFICATION_SUBMITTED
+  ORGANIZATION_VERIFICATION_APPROVED
+  ORGANIZATION_VERIFICATION_REJECTED
+  ORGANIZATION_VERIFICATION_INFO_REQUESTED
+  BANK_ACCOUNT_CREATED
+  BANK_ACCOUNT_UPDATED
+  BANK_ACCOUNT_DELETED
+  BANK_ACCOUNT_VERIFICATION_REQUESTED
   ROLE_CHANGED
   SETTINGS_UPDATED
   CAMPAIGN_SUSPENDED
@@ -517,6 +602,11 @@ enum AuditAction {
   APPEAL_SUBMITTED
   APPEAL_RESOLVED
   FRAUD_REPORTED
+  RECOVERY_CASE_CREATED
+  RECOVERY_RETRIED
+  RECOVERY_SETTLED
+  RECOVERY_MANUAL_OVERRIDE
+  DONOR_CREDIT_ISSUED
 }
 
 model AuditLog {
@@ -537,6 +627,157 @@ model AuditLog {
   @@index([action])
   @@index([entityType])
   @@index([entityId])
+  @@index([createdAt])
+}
+
+// ============================================
+// RECOVERY WORKFLOW
+// ============================================
+
+enum RecoveryCaseType {
+  FAILED_REFUND
+  FAILED_DISTRIBUTION
+  CANCELLED_CAMPAIGN_FUNDS
+}
+
+enum RecoveryStatus {
+  PENDING
+  RETRYING
+  RECOVERED
+  FAILED_PERMANENTLY
+  RECOVERY_REQUIRED
+}
+
+enum SettlementOption {
+  REFUND_TO_DONOR
+  TRANSFER_TO_CAMPAIGN
+  RETAIN_IN_ESCROW
+}
+
+model RecoveryCase {
+  id              String            @id @default(cuid())
+  type            RecoveryCaseType
+  status          RecoveryStatus    @default(PENDING)
+  // linked entities (one of these will be set)
+  donationId      String?
+  distributionId  String?
+  campaignId      String?
+  // failure metadata
+  failureReason   String?           @db.Text
+  failureMetadata Json?
+  // retry tracking
+  retryCount      Int               @default(0)
+  maxRetries      Int               @default(3)
+  nextRetryAt     DateTime?
+  lastRetriedAt   DateTime?
+  // settlement
+  settlementOption  SettlementOption?
+  settlementNotes   String?         @db.Text
+  settledAt         DateTime?
+  settledBy         String?
+  resolvedAt        DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  donorCredits    DonorCredit[]
+
+  @@index([type])
+  @@index([status])
+  @@index([donationId])
+  @@index([distributionId])
+  @@index([campaignId])
+  @@index([nextRetryAt])
+  @@index([createdAt])
+}
+
+enum DonorCreditStatus {
+  PENDING
+  APPLIED
+  EXPIRED
+}
+
+model DonorCredit {
+  id             String            @id @default(cuid())
+  userId         String
+  recoveryCaseId String
+  amount         Decimal           @db.Decimal(20, 8)
+  currency       String            @default("XLM")
+  status         DonorCreditStatus @default(PENDING)
+  reason         String?           @db.Text
+  appliedAt      DateTime?
+  expiresAt      DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recoveryCase RecoveryCase @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([recoveryCaseId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ============================================
+// WEBHOOKS
+// ============================================
+
+enum WebhookEventType {
+  DONATION_CONFIRMED
+  DISTRIBUTION_COMPLETED
+  CAMPAIGN_MILESTONE_REACHED
+  KYC_STATUS_CHANGED
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  DISABLED
+}
+
+model WebhookSubscription {
+  id          String    @id @default(cuid())
+  name        String
+  url         String
+  secret      String
+  events      WebhookEventType[]
+  active      Boolean   @default(true)
+  description String?   @db.Text
+  createdBy   String
+  lastSuccessAt DateTime?
+  failureCount  Int     @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  webhookEvents WebhookEvent[]
+
+  @@index([active])
+  @@index([createdBy])
+}
+
+model WebhookEvent {
+  id             String               @id @default(cuid())
+  webhookId      String
+  eventType      WebhookEventType
+  payload        Json
+  status         WebhookDeliveryStatus @default(PENDING)
+  attempts       Int                  @default(0)
+  maxAttempts    Int                  @default(5)
+  lastAttemptAt  DateTime?
+  nextRetryAt    DateTime?
+  responseCode   Int?
+  responseBody   String?              @db.Text
+  errorMessage   String?              @db.Text
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  webhook WebhookSubscription @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId])
+  @@index([eventType])
+  @@index([status])
+  @@index([nextRetryAt])
   @@index([createdAt])
 }
 
