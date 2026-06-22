@@ -94,6 +94,19 @@ export const config = {
     // Notify donors when a campaign is suspended for a fraud-related reason.
     notifyDonorsOnFraudSuspension: process.env.MODERATION_NOTIFY_DONORS_ON_FRAUD !== 'false',
   },
+
+  analytics: {
+    // Cron patterns for rollup jobs (configurable via env vars)
+    hourlyRollupCron: process.env.ANALYTICS_HOURLY_CRON || '5 * * * *',
+    monthlyRollupCron: process.env.ANALYTICS_MONTHLY_CRON || '0 2 1 * *',
+    trendingRefreshCron: process.env.ANALYTICS_TRENDING_CRON || '*/15 * * * *',
+    // Feature flag to disable analytics worker
+    analyticsWorkerEnabled: process.env.ANALYTICS_WORKER_ENABLED !== 'false',
+    // Cache TTL for campaign stats in seconds
+    campaignStatsCacheTTL: parseInt(process.env.ANALYTICS_CACHE_TTL || '3600', 10),
+    // Number of trending campaigns to track
+    trendingCampaignsCount: parseInt(process.env.ANALYTICS_TRENDING_COUNT || '20', 10),
+  },
 };
 
 export default config;
