@@ -52,7 +52,8 @@ model User {
   campaigns      Campaign[]
   auditLogs      AuditLog[]
   notifications  Notification[]
-  kycSubmissions KYCSubmission[]
+ kycSubmissions KYCSubmission[]
+  pledges        Pledge[]
 
   @@index([email])
   @@index([walletAddress])
@@ -229,6 +230,7 @@ model Campaign {
   suspensions   Suspension[]
   appeals       Appeal[]
   fraudReports  FraudReport[]
+  pledges       Pledge[]
 
   @@index([organizationId])
   @@index([userId])
@@ -744,4 +746,74 @@ model FraudReport {
   @@index([campaignId])
   @@index([reporterId])
   @@index([createdAt])
+}
+
+// ─── Pledge System ───────────────────────────────────────────────────────────
+
+enum PledgeType {
+  ONE_OFF
+  RECURRING
+}
+
+enum PledgeCadence {
+  WEEKLY
+  MONTHLY
+}
+
+enum PledgeStatus {
+  ACTIVE
+  PAUSED
+  CANCELLED
+  FAILED
+  COMPLETED
+}
+
+enum PledgeAttemptStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model Pledge {
+  id             String        @id @default(uuid())
+  donorId        String
+  campaignId     String?
+  amount         Decimal
+  currency       String        @default("USD")
+  type           PledgeType
+  cadence        PledgeCadence?
+  startDate      DateTime
+  nextRunAt      DateTime?
+  endDate        DateTime?
+  status         PledgeStatus  @default(ACTIVE)
+  idempotencyKey String?       @unique
+  metadata       Json?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  donor     User       @relation(fields: [donorId], references: [id])
+  campaign  Campaign?  @relation(fields: [campaignId], references: [id])
+  attempts  PledgeAttempt[]
+
+  @@index([donorId])
+  @@index([status, nextRunAt])
+  @@map("pledges")
+}
+
+model PledgeAttempt {
+  id               String              @id @default(uuid())
+  pledgeId         String
+  attemptAt        DateTime            @default(now())
+  status           PledgeAttemptStatus @default(PENDING)
+  providerReference String?
+  failureReason    String?
+  retryCount       Int                 @default(0)
+  metadata         Json?
+  createdAt        DateTime            @default(now())
+
+  pledge Pledge @relation(fields: [pledgeId], references: [id])
+
+  @@index([pledgeId])
+  @@index([status])
+  @@map("pledge_attempts")
 }
