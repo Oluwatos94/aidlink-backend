@@ -45,15 +45,17 @@ model User {
   updatedAt     DateTime   @updatedAt
 
   // Relations
-  sessions       Session[]
-  organizations  Organization?
-  beneficiary    Beneficiary?
-  donations      Donation[]
-  campaigns      Campaign[]
-  auditLogs      AuditLog[]
-  notifications  Notification[]
-  kycSubmissions KYCSubmission[]
+  sessions         Session[]
+  organizations    Organization?
+  beneficiary      Beneficiary?
+  donations        Donation[]
+  campaigns        Campaign[]
+  auditLogs        AuditLog[]
+  notifications    Notification[]
+  kycSubmissions   KYCSubmission[]
   donorCredits   DonorCredit[]
+  taxReceipts      TaxReceipt[]
+  receiptBatchJobs ReceiptBatchJob[]
 
   @@index([email])
   @@index([walletAddress])
@@ -130,10 +132,12 @@ model Organization {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  campaigns    Campaign[]
-  bankAccounts BankAccount[]
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaigns        Campaign[]
+  bankAccounts     BankAccount[]
   verificationEvents OrganizationVerificationEvent[]
+  taxReceipts      TaxReceipt[]
+  receiptBatchJobs ReceiptBatchJob[]
 
   @@index([userId])
   @@index([status])
@@ -267,23 +271,25 @@ enum DonationStatus {
 }
 
 model Donation {
-  id               String         @id @default(cuid())
-  campaignId       String
-  userId           String?
-  amount           Decimal        @db.Decimal(20, 8)
-  currency         String         @default("XLM")
-  status           DonationStatus @default(PENDING)
-  blockchainTxHash String?        @unique
-  fromWallet       String?
-  toWallet         String?
-  memo             String?
-  isAnonymous      Boolean        @default(false)
-  donorMessage     String?        @db.Text
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  id                 String         @id @default(cuid())
+  campaignId         String
+  userId             String?
+  amount             Decimal        @db.Decimal(20, 8)
+  currency           String         @default("XLM")
+  status             DonationStatus @default(PENDING)
+  blockchainTxHash   String?        @unique
+  fromWallet         String?
+  toWallet           String?
+  memo               String?
+  isAnonymous        Boolean        @default(false)
+  donorMessage       String?        @db.Text
+  receiptGeneratedAt DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
 
-  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  campaign   Campaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  taxReceipt TaxReceipt?
 
   @@index([campaignId])
   @@index([userId])
@@ -913,76 +919,78 @@ model FraudReport {
 }
 
 // ============================================
-// ANALYTICS ROLLUPS & TRENDING
+// TAX RECEIPTS
 // ============================================
 
-model CampaignHourlyStat {
-  id            String   @id @default(cuid())
-  campaignId    String
-  hour          DateTime
-  donationCount Int      @default(0)
-  donationVolume Decimal @default(0) @db.Decimal(20, 8)
-  uniqueDonors  Int      @default(0)
-  distributionCount Int  @default(0)
-  itemsDistributed   Int  @default(0)
-  distributionVolume  Decimal @default(0) @db.Decimal(20, 8)
-  newBeneficiaries    Int  @default(0)
-  activeDonors        Int  @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  @@unique([campaignId, hour])
-  @@index([campaignId])
-  @@index([hour])
+enum ReceiptEmailStatus {
+  PENDING
+  SENT
+  BOUNCED
+  FAILED
 }
 
-model CampaignMonthlyStat {
-  id                String   @id @default(cuid())
-  campaignId        String
-  month             DateTime
-  donationCount     Int      @default(0)
-  donationVolume    Decimal  @default(0) @db.Decimal(20, 8)
-  uniqueDonors      Int      @default(0)
-  distributionCount Int      @default(0)
-  itemsDistributed  Int      @default(0)
-  distributionVolume Decimal  @default(0) @db.Decimal(20, 8)
-  donorGrowth       Int      @default(0)
-  distributionReach Int      @default(0)
-  campaignActivity  Int      @default(0)
-  activeDonors      Int      @default(0)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  @@unique([campaignId, month])
-  @@index([campaignId])
-  @@index([month])
+enum ReceiptBatchJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
 }
 
-model CampaignTrending {
-  id              String   @id @default(cuid())
-  campaignId      String
-  trendScore      Decimal  @default(0) @db.Decimal(20, 8)
-  donationVelocity Decimal  @default(0) @db.Decimal(20, 8)
-  donorGrowth     Int      @default(0)
-  distributionImpact Decimal @default(0) @db.Decimal(20, 8)
-  period          String   @default("last24h")
-  rank            Int      @default(0)
-  refreshedAt     DateTime @default(now())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+// One immutable tax receipt per confirmed donation. Metadata is retained
+// permanently for audit; the underlying PDF file may be subject to a separate
+// retention policy. `donationId` is unique so generation is idempotent.
+model TaxReceipt {
+  id                  String             @id @default(uuid())
+  donationId          String             @unique
+  donorId             String
+  organizationId      String
+  amount              Decimal            @db.Decimal(20, 8)
+  currency            String
+  donationDate        DateTime
+  receiptNumber       String             @unique
+  filePath            String
+  fileUrl             String?
+  region              String
+  taxDeductible       Boolean            @default(false)
+  templateVersion     String
+  generatedAt         DateTime           @default(now())
+  emailSentAt         DateTime?
+  emailDeliveryStatus ReceiptEmailStatus @default(PENDING)
+  metadata            Json?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
 
-  @@unique([campaignId, period])
-  @@index([trendScore])
-  @@index([period])
-  @@index([rank])
+  donation     Donation     @relation(fields: [donationId], references: [id], onDelete: Cascade)
+  donor        User         @relation(fields: [donorId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([donorId])
+  @@index([organizationId])
+  @@index([emailDeliveryStatus])
+  @@index([donationDate])
+  @@index([createdAt])
 }
 
-model RollupTracker {
-  id                     String   @id @default(cuid())
-  type                   String   @unique
-  lastProcessedTimestamp DateTime
-  lastHour               DateTime?
-  lastMonth              DateTime?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+// Tracks an asynchronous bulk receipt-generation request. Progress counters are
+// updated as the worker processes matching donations.
+model ReceiptBatchJob {
+  id             String                @id @default(uuid())
+  organizationId String?
+  createdBy      String
+  status         ReceiptBatchJobStatus @default(PENDING)
+  totalCount     Int                   @default(0)
+  generatedCount Int                   @default(0)
+  failedCount    Int                   @default(0)
+  jobMetadata    Json?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  completedAt    DateTime?
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  creator      User          @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([createdBy])
+  @@index([status])
+  @@index([createdAt])
 }
