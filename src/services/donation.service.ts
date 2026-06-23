@@ -94,7 +94,8 @@ export class DonationService {
 
   static async getDonations(
     filters: DonationFilters = {},
-    pagination: any
+    pagination: any,
+    requestingUserId?: string
   ): Promise<PaginatedResponse<any>> {
     filters = filters ?? {};
 
@@ -148,7 +149,7 @@ export class DonationService {
             },
           },
         },
-      }),
+      }).then((donations) => donations.map((d) => d.isAnonymous && d.userId !== requestingUserId ? { ...d, user: { id: null, username: 'Anonymous', email: null } } : d)),
       prisma.donation.count({ where }),
     ]);
 
@@ -163,7 +164,7 @@ export class DonationService {
     };
   }
 
-  static async getDonationById(id: string): Promise<any> {
+  static async getDonationById(id: string, requestingUserId?: string): Promise<any> {
     const donation = await prisma.donation.findUnique({
       where: { id },
       include: {
@@ -190,6 +191,10 @@ export class DonationService {
 
     if (!donation) {
       throw new AppError('Donation not found', 404);
+    }
+
+    if (donation.isAnonymous && donation.userId !== requestingUserId) {
+      return { ...donation, user: { id: null, username: 'Anonymous', email: null } };
     }
 
     return donation;

@@ -154,11 +154,16 @@ export class CampaignService {
       throw new AppError('Campaign not found', 404);
     }
 
+    // Anonymize anonymous donations in the campaign feed
+    const sanitizedDonations = campaign.donations.map((d) =>
+      d.isAnonymous ? { ...d, user: { id: null, username: 'Anonymous' } } : d
+    );
+
     // Attach moderation context: current suspension summary and whether the
     // owner can submit an appeal.
     const { suspensionSummary, canAppeal } = await ModerationService.getModerationView(campaign);
 
-    return { ...campaign, suspensionSummary, canAppeal };
+    return { ...campaign, donations: sanitizedDonations, suspensionSummary, canAppeal };
   }
 
   /**
