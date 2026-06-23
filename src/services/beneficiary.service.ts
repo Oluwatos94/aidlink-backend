@@ -6,6 +6,7 @@ import logger from '../config/logger';
 import { Queue } from 'bullmq';
 import { config } from '../config';
 import { dispatchWebhookEvent } from '../controllers/webhook.controller';
+import { getOrSet, invalidateBeneficiaryCache, buildKey } from '../utils/cache';
 
 // KYC queue instance
 const kycQueue = new Queue('kyc-queue', {
@@ -47,70 +48,74 @@ export class BeneficiaryService {
 
   static async getBeneficiaries(filters: BeneficiaryFilters, pagination: any): Promise<PaginatedResponse<any>> {
     const { page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc' } = pagination;
-    const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const cacheKey = buildKey('beneficiaries', `list:${JSON.stringify({ filters, page, limit, sortBy, sortOrder })}`);
 
-    if (filters.status) {
-      where.status = filters.status;
-    }
+    return getOrSet(cacheKey, 600, async () => {
+      const skip = (page - 1) * limit;
 
-    if (filters.country) {
-      where.country = filters.country;
-    }
+      const where: any = {};
 
-    if (filters.city) {
-      where.city = filters.city;
-    }
+      if (filters.status) {
+        where.status = filters.status;
+      }
 
-    if (filters.riskScore !== undefined) {
-      where.riskScore = { lte: filters.riskScore };
-    }
+      if (filters.country) {
+        where.country = filters.country;
+      }
 
-    if (filters.search) {
-      where.OR = [
-        { firstName: { contains: filters.search, mode: 'insensitive' } },
-        { lastName: { contains: filters.search, mode: 'insensitive' } },
-        { idDocumentNumber: { contains: filters.search, mode: 'insensitive' } },
-      ];
-    }
+      if (filters.city) {
+        where.city = filters.city;
+      }
 
-    const [beneficiaries, total] = await Promise.all([
-      prisma.beneficiary.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { [sortBy]: sortOrder },
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              status: true,
+      if (filters.riskScore !== undefined) {
+        where.riskScore = { lte: filters.riskScore };
+      }
+
+      if (filters.search) {
+        where.OR = [
+          { firstName: { contains: filters.search, mode: 'insensitive' } },
+          { lastName: { contains: filters.search, mode: 'insensitive' } },
+          { idDocumentNumber: { contains: filters.search, mode: 'insensitive' } },
+        ];
+      }
+
+      const [beneficiaries, total] = await Promise.all([
+        prisma.beneficiary.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { [sortBy]: sortOrder },
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                status: true,
+              },
+            },
+            _count: {
+              select: {
+                assignments: true,
+                distributions: true,
+              },
             },
           },
-          _count: {
-            select: {
-              assignments: true,
-              distributions: true,
-            },
-          },
+        }),
+        prisma.beneficiary.count({ where }),
+      ]);
+
+      return {
+        data: beneficiaries,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
         },
-      }),
-      prisma.beneficiary.count({ where }),
-    ]);
-
-    return {
-      data: beneficiaries,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
+      };
+    });
   }
-
   static async getBeneficiaryById(id: string): Promise<any> {
     const beneficiary = await prisma.beneficiary.findUnique({
       where: { id },
@@ -172,6 +177,8 @@ export class BeneficiaryService {
     });
 
     logger.info(`Beneficiary updated: ${id} by user ${userId}`);
+
+    await invalidateBeneficiaryCache(id);
 
     return updated;
   }
