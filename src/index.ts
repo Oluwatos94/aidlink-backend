@@ -26,6 +26,7 @@ import uploadRoutes from './routes/upload.routes';
 import organizationRoutes from './routes/organization.routes';
 import webhookRoutes from './routes/webhook.routes';
 import receiptRoutes from './routes/receipt.routes';
+import blockchainRoutes from './routes/blockchain.routes';
 import { sorobanIndexer } from './blockchain/soroban.indexer';
 import { initializeWebSocket } from './websocket/socket.server';
 import { stopRecoveryWorker } from './workers/recovery.worker';
@@ -84,6 +85,7 @@ app.use(`/api/${config.apiVersion}/search`, searchRoutes);
 app.use(`/api/${config.apiVersion}/upload`, uploadRoutes);
 app.use(`/api/${config.apiVersion}/organizations`, organizationRoutes);
 app.use(`/api/${config.apiVersion}/admin/webhooks`, webhookRoutes);
+app.use(`/api/${config.apiVersion}/admin/blockchain`, blockchainRoutes);
 
 // Swagger documentation
 const swaggerOptions = {

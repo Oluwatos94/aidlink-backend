@@ -87,6 +87,16 @@ const prismaMock = {
     findMany: jest.fn().mockResolvedValue([]),
     aggregate: jest.fn().mockResolvedValue({ _sum: { amount: 0 }, _count: { id: 0 } }),
   },
+  blockchainTransaction: {
+    findUnique: jest.fn(),
+    findMany: jest.fn(),
+    count: jest.fn(),
+  },
+  contractEvent: {
+    findUnique: jest.fn(),
+    findMany: jest.fn(),
+    count: jest.fn(),
+  },
   $transaction: jest.fn().mockImplementation(async (cb) => {
     if (typeof cb === 'function') {
       return cb(prismaMock);
