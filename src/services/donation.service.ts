@@ -3,7 +3,9 @@ import { DonationInput, DonationFilters, PaginatedResponse } from '../types';
 import { DonationStatus, Role } from '@prisma/client';
 import { AppError } from '../middleware/error';
 import logger from '../config/logger';
+import { config } from '../config';
 import { dispatchWebhookEvent } from '../controllers/webhook.controller';
+import { AnalyticsService } from './analytics.service';
 
 export class DonationService {
   static async createDonation(data: DonationInput, userId?: string): Promise<any> {
@@ -79,10 +81,21 @@ export class DonationService {
       blockchainTxHash: txHash,
     }).catch((err) => logger.error('Webhook dispatch error (donation.confirmed):', err));
 
+    if (config.receipts.enabled && donation.userId) {
+      import('../workers/receipt.worker.js')
+        .then(({ enqueueReceiptGeneration }) => enqueueReceiptGeneration(id))
+        .catch((error) =>
+          logger.error(`Failed to enqueue receipt generation for donation ${id}:`, error),
+        );
+    }
+
     return updated;
   }
 
-  static async getDonations(filters: DonationFilters = {}, pagination: any): Promise<PaginatedResponse<any>> {
+  static async getDonations(
+    filters: DonationFilters = {},
+    pagination: any
+  ): Promise<PaginatedResponse<any>> {
     filters = filters ?? {};
 
     const { page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc' } = pagination;
@@ -229,6 +242,11 @@ export class DonationService {
     });
 
     logger.info(`Donation refunded: ${id} by user ${userId}`);
+
+    // Update cache: invalidate on refund
+    AnalyticsService.invalidateCampaignCache(donation.campaignId).catch((err) =>
+      logger.error('Failed to invalidate campaign cache on refund', err)
+    );
 
     return updated;
   }
