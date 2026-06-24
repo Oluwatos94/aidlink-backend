@@ -31,6 +31,8 @@ import blockchainRoutes from './routes/blockchain.routes';
 import { sorobanIndexer } from './blockchain/soroban.indexer';
 import { initializeWebSocket } from './websocket/socket.server';
 import { stopRecoveryWorker } from './workers/recovery.worker';
+import { EmailTemplateService } from './services/emailTemplate.service';
+import userRoutes from './routes/user.routes';
 
 const app: Application = express();
 const httpServer = createServer(app);
@@ -145,6 +147,9 @@ const startServer = async (): Promise<void> => {
     // Initialize WebSocket server
     initializeWebSocket(httpServer);
 
+    // Initialize HTML email template engine (Handlebars)
+    EmailTemplateService.initialize();
+
     // Start blockchain indexer
     if (config.env === 'production' || config.env === 'development') {
       sorobanIndexer.start().catch((error) => {
@@ -167,6 +172,13 @@ const startServer = async (): Promise<void> => {
       import('./workers/receipt.worker.js')
         .then(({ startReceiptWorker }) => startReceiptWorker())
         .catch((error) => logger.error('Failed to start receipt worker:', error));
+    }
+
+    // Start email notification worker (opt-in, controlled by EMAIL_QUEUE_ENABLED)
+    if (config.email.queueEnabled) {
+      import('./workers/email.worker.js')
+        .then(({ startEmailWorker }) => startEmailWorker())
+        .catch((error) => logger.error('Failed to start email worker:', error));
     }
 
     // Start webhook delivery worker
