@@ -9,6 +9,7 @@ import swaggerUi from 'swagger-ui-express';
 import { createServer } from 'http';
 import { config } from './config';
 import logger from './config/logger';
+import { validateEnv } from './config/envValidate';
 import { connectDatabase, disconnectDatabase } from './config/database';
 import { connectRedis, disconnectRedis } from './config/redis';
 import { apiLimiter } from './middleware/rateLimit';
@@ -138,6 +139,9 @@ app.use(errorHandler);
 // Start server
 const startServer = async (): Promise<void> => {
   try {
+    // Validate required environment variables before connecting to services
+    validateEnv();
+
     // Connect to database
     await connectDatabase();
 
