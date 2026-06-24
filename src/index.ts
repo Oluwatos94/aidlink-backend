@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import morgan from 'morgan';
+import path from 'path';
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
 import { createServer } from 'http';
@@ -26,6 +27,7 @@ import uploadRoutes from './routes/upload.routes';
 import organizationRoutes from './routes/organization.routes';
 import webhookRoutes from './routes/webhook.routes';
 import receiptRoutes from './routes/receipt.routes';
+import blockchainRoutes from './routes/blockchain.routes';
 import { sorobanIndexer } from './blockchain/soroban.indexer';
 import { initializeWebSocket } from './websocket/socket.server';
 import { stopRecoveryWorker } from './workers/recovery.worker';
@@ -86,9 +88,19 @@ app.use(`/api/${config.apiVersion}/search`, searchRoutes);
 app.use(`/api/${config.apiVersion}/upload`, uploadRoutes);
 app.use(`/api/${config.apiVersion}/organizations`, organizationRoutes);
 app.use(`/api/${config.apiVersion}/admin/webhooks`, webhookRoutes);
-app.use(`/api/${config.apiVersion}/users`, userRoutes);
+app.use(`/api/${config.apiVersion}/admin/blockchain`, blockchainRoutes);
 
-// Swagger documentation
+// Serve openapi.yaml as a static file so Swagger UI can load it directly
+app.use('/openapi.yaml', express.static(path.join(__dirname, '..', 'openapi.yaml')));
+
+// Swagger UI — canonical path required by spec, legacy path kept for compat
+const swaggerUiOptions = {
+  swaggerUrl: '/openapi.yaml',
+  customSiteTitle: 'AidLink API Docs',
+};
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(undefined, swaggerUiOptions));
+
+// Legacy alias kept for backward compatibility
 const swaggerOptions = {
   definition: {
     openapi: '3.0.0',
@@ -183,7 +195,7 @@ const startServer = async (): Promise<void> => {
     // Start HTTP server
     httpServer.listen(config.port, () => {
       logger.info(`Server running on port ${config.port} in ${config.env} mode`);
-      logger.info(`API documentation available at http://localhost:${config.port}/api/docs`);
+      logger.info(`API documentation available at http://localhost:${config.port}/api-docs`);
       logger.info(`WebSocket server initialized`);
     });
   } catch (error) {
