@@ -214,12 +214,17 @@ export class DonationService {
       throw new AppError('You do not have permission to refund this donation', 403);
     }
 
-    // Prevent negative campaign balance
-    if (donation.campaign.currentAmount < donation.amount) {
-      throw new AppError('Refund amount exceeds campaign current balance', 400);
-    }
-
     const updated = await prisma.$transaction(async (tx) => {
+      // Re-read campaign balance inside transaction to prevent TOCTOU race condition
+      const campaign = await tx.campaign.findUnique({
+        where: { id: donation.campaignId },
+        select: { currentAmount: true },
+      });
+
+      if (!campaign || Number(campaign.currentAmount) < Number(donation.amount)) {
+        throw new AppError('Refund amount exceeds campaign current balance', 400);
+      }
+
       // Update donation status
       const updatedDonation = await tx.donation.update({
         where: { id },
