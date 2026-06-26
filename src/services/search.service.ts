@@ -1,4 +1,5 @@
 import prisma from '../config/database';
+import { getOrSet, buildKey } from '../utils/cache';
 
 export interface SearchFilters {
   query?: string;
@@ -145,65 +146,69 @@ export class SearchService {
       limit = 20,
     } = filters;
 
-    const skip = (page - 1) * limit;
+    const cacheKey = buildKey('search', `campaigns:${JSON.stringify(filters)}`);
 
-    const where: any = {};
+    return getOrSet(cacheKey, 120, async () => {
+      const skip = (page - 1) * limit;
 
-    if (query) {
-      where.OR = [
-        { title: { contains: query, mode: 'insensitive' } },
-        { description: { contains: query, mode: 'insensitive' } },
-      ];
-    }
+      const where: any = {};
 
-    if (status) {
-      where.status = status;
-    }
+      if (query) {
+        where.OR = [
+          { title: { contains: query, mode: 'insensitive' } },
+          { description: { contains: query, mode: 'insensitive' } },
+        ];
+      }
 
-    if (dateFrom || dateTo) {
-      where.createdAt = {};
-      if (dateFrom) where.createdAt.gte = dateFrom;
-      if (dateTo) where.createdAt.lte = dateTo;
-    }
+      if (status) {
+        where.status = status;
+      }
 
-    if (minAmount || maxAmount) {
-      where.targetAmount = {};
-      if (minAmount) where.targetAmount.gte = minAmount;
-      if (maxAmount) where.targetAmount.lte = maxAmount;
-    }
+      if (dateFrom || dateTo) {
+        where.createdAt = {};
+        if (dateFrom) where.createdAt.gte = dateFrom;
+        if (dateTo) where.createdAt.lte = dateTo;
+      }
 
-    const [campaigns, total] = await Promise.all([
-      prisma.campaign.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { [sortBy]: sortOrder },
-        include: {
-          organization: {
-            select: {
-              name: true,
+      if (minAmount || maxAmount) {
+        where.targetAmount = {};
+        if (minAmount) where.targetAmount.gte = minAmount;
+        if (maxAmount) where.targetAmount.lte = maxAmount;
+      }
+
+      const [campaigns, total] = await Promise.all([
+        prisma.campaign.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { [sortBy]: sortOrder },
+          include: {
+            organization: {
+              select: {
+                name: true,
+              },
+            },
+            _count: {
+              select: {
+                donations: true,
+                beneficiaries: true,
+              },
             },
           },
-          _count: {
-            select: {
-              donations: true,
-              beneficiaries: true,
-            },
-          },
+        }),
+        prisma.campaign.count({ where }),
+      ]);
+
+      return {
+        data: campaigns,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
         },
-      }),
-      prisma.campaign.count({ where }),
-    ]);
-
-    return {
-      data: campaigns,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
+      };
+    });
   }
 
   static async searchDonations(filters: SearchFilters) {

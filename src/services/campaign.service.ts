@@ -5,6 +5,7 @@ import { AppError } from '../middleware/error';
 import logger from '../config/logger';
 import { ModerationService } from './moderation.service';
 import { dispatchWebhookEvent } from '../controllers/webhook.controller';
+import { getOrSet, invalidateCampaignCache, invalidateSearchCache } from '../utils/cache';
 
 export class CampaignService {
   static async createCampaign(data: CampaignInput, userId: string, organizationId: string): Promise<any> {
@@ -37,67 +38,73 @@ export class CampaignService {
 
   static async getCampaigns(filters: CampaignFilters, pagination: any): Promise<PaginatedResponse<any>> {
     const { page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc' } = pagination;
-    const skip = (page - 1) * limit;
 
-    const where: any = {};
+    // Build cache key from filters + pagination
+    const cacheKey = buildKey('campaigns', `list:${JSON.stringify({ filters, page, limit, sortBy, sortOrder })}`);
 
-    if (filters.status) {
-      where.status = filters.status;
-    }
+    return getOrSet(cacheKey, 300, async () => {
+      const skip = (page - 1) * limit;
 
-    if (filters.organizationId) {
-      where.organizationId = filters.organizationId;
-    }
+      const where: any = {};
 
-    if (filters.startDate) {
-      where.startDate = { gte: filters.startDate };
-    }
+      if (filters.status) {
+        where.status = filters.status;
+      }
 
-    if (filters.endDate) {
-      where.endDate = { lte: filters.endDate };
-    }
+      if (filters.organizationId) {
+        where.organizationId = filters.organizationId;
+      }
 
-    if (filters.search) {
-      where.OR = [
-        { title: { contains: filters.search, mode: 'insensitive' } },
-        { description: { contains: filters.search, mode: 'insensitive' } },
-      ];
-    }
+      if (filters.startDate) {
+        where.startDate = { gte: filters.startDate };
+      }
 
-    const [campaigns, total] = await Promise.all([
-      prisma.campaign.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { [sortBy]: sortOrder },
-        include: {
-          organization: {
-            select: {
-              id: true,
-              name: true,
-              logo: true,
+      if (filters.endDate) {
+        where.endDate = { lte: filters.endDate };
+      }
+
+      if (filters.search) {
+        where.OR = [
+          { title: { contains: filters.search, mode: 'insensitive' } },
+          { description: { contains: filters.search, mode: 'insensitive' } },
+        ];
+      }
+
+      const [campaigns, total] = await Promise.all([
+        prisma.campaign.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { [sortBy]: sortOrder },
+          include: {
+            organization: {
+              select: {
+                id: true,
+                name: true,
+                logo: true,
+              },
+            },
+            _count: {
+              select: {
+                donations: true,
+                beneficiaries: true,
+              },
             },
           },
-          _count: {
-            select: {
-              donations: true,
-              beneficiaries: true,
-            },
-          },
+        }),
+        prisma.campaign.count({ where }),
+      ]);
+
+      return {
+        data: campaigns,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
         },
-      }),
-      prisma.campaign.count({ where }),
-    ]);
-
-    return {
-      data: campaigns,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
+      };
+    });
   }
 
   static async getCampaignById(id: string): Promise<any> {
@@ -139,6 +146,16 @@ export class CampaignService {
         },
         milestones: {
           orderBy: { order: 'asc' },
+          include: {
+            submissions: {
+              where: { status: { in: ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED'] } },
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+              include: {
+                reviews: { orderBy: { createdAt: 'desc' }, take: 1 },
+              },
+            },
+          },
         },
       },
     });
@@ -147,11 +164,16 @@ export class CampaignService {
       throw new AppError('Campaign not found', 404);
     }
 
+    // Anonymize anonymous donations in the campaign feed
+    const sanitizedDonations = campaign.donations.map((d) =>
+      d.isAnonymous ? { ...d, user: { id: null, username: 'Anonymous' } } : d
+    );
+
     // Attach moderation context: current suspension summary and whether the
     // owner can submit an appeal.
     const { suspensionSummary, canAppeal } = await ModerationService.getModerationView(campaign);
 
-    return { ...campaign, suspensionSummary, canAppeal };
+    return { ...campaign, donations: sanitizedDonations, suspensionSummary, canAppeal };
   }
 
   /**
@@ -250,6 +272,9 @@ export class CampaignService {
 
     logger.info(`Campaign updated: ${id} by user ${userId}`);
 
+    // Invalidate campaign listing caches
+    await invalidateCampaignCache(id);
+
     return updated;
   }
 
@@ -280,6 +305,10 @@ export class CampaignService {
       await tx.donation.deleteMany({ where: { campaignId: id } });
       await tx.campaign.delete({ where: { id } });
     });
+
+    // Invalidate campaign caches
+    await invalidateCampaignCache(id);
+    await invalidateSearchCache();
 
     logger.info(`Campaign deleted: ${id} by user ${userId}`);
   }
@@ -314,6 +343,9 @@ export class CampaignService {
     });
 
     logger.info(`Campaign status updated: ${id} to ${status} by user ${userId}`);
+
+    // Invalidate campaign caches
+    await invalidateCampaignCache(id);
 
     return updated;
   }
