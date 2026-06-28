@@ -354,9 +354,17 @@ describe('NotificationService', () => {
       prismaMock.notification.update.mockResolvedValue(mockNotification());
     });
 
-    it('sendDonationReceivedNotification', async () => {
-      await NotificationService.sendDonationReceivedNotification('user-1', 'Campaign Title', 100);
-      expect(prismaMock.notification.create).toHaveBeenCalled();
+    it('sendDonationReceivedNotification uses the provided currency', async () => {
+      await NotificationService.sendDonationReceivedNotification('user-1', 'Campaign Title', 100, 'USDC');
+
+      expect(prismaMock.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            message: expect.stringContaining('100 USDC'),
+            metadata: expect.objectContaining({ currency: 'USDC' }),
+          }),
+        })
+      );
     });
 
     it('sendCampaignUpdateNotification', async () => {
@@ -364,9 +372,17 @@ describe('NotificationService', () => {
       expect(prismaMock.notification.create).toHaveBeenCalled();
     });
 
-    it('sendDistributionSentNotification', async () => {
-      await NotificationService.sendDistributionSentNotification('user-1', 50);
-      expect(prismaMock.notification.create).toHaveBeenCalled();
+    it('sendDistributionSentNotification uses the provided currency', async () => {
+      await NotificationService.sendDistributionSentNotification('user-1', 50, 'EURC');
+
+      expect(prismaMock.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            message: expect.stringContaining('50 EURC'),
+            metadata: expect.objectContaining({ currency: 'EURC' }),
+          }),
+        })
+      );
     });
 
     it('sendKYCApprovedNotification', async () => {
