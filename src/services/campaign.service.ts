@@ -398,6 +398,7 @@ export class CampaignService {
     // Validate milestone input
     CampaignService.validateMilestoneInput(data);
 
+    const isAlreadyReached = Number(campaign.currentAmount) >= Number(data.targetAmount);
     const milestone = await prisma.milestone.create({
       data: {
         title: data.title,
@@ -405,6 +406,8 @@ export class CampaignService {
         targetAmount: data.targetAmount,
         order: data.order,
         campaignId,
+        achieved: isAlreadyReached,
+        achievedAt: isAlreadyReached ? new Date() : null,
       },
     });
 
