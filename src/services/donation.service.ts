@@ -6,6 +6,7 @@ import logger from '../config/logger';
 import { config } from '../config';
 import { dispatchWebhookEvent } from '../controllers/webhook.controller';
 import { AnalyticsService } from './analytics.service';
+import { sanitizeString } from '../utils/sanitization';
 
 export class DonationService {
   static async createDonation(data: DonationInput, userId?: string): Promise<any> {
@@ -24,6 +25,7 @@ export class DonationService {
     const donation = await prisma.donation.create({
       data: {
         ...data,
+        donorMessage: data.donorMessage ? sanitizeString(data.donorMessage) : undefined,
         userId,
         status: DonationStatus.PENDING,
       },
@@ -219,12 +221,17 @@ export class DonationService {
       throw new AppError('You do not have permission to refund this donation', 403);
     }
 
-    // Prevent negative campaign balance
-    if (donation.campaign.currentAmount < donation.amount) {
-      throw new AppError('Refund amount exceeds campaign current balance', 400);
-    }
-
     const updated = await prisma.$transaction(async (tx) => {
+      // Re-read campaign balance inside transaction to prevent TOCTOU race condition
+      const campaign = await tx.campaign.findUnique({
+        where: { id: donation.campaignId },
+        select: { currentAmount: true },
+      });
+
+      if (!campaign || Number(campaign.currentAmount) < Number(donation.amount)) {
+        throw new AppError('Refund amount exceeds campaign current balance', 400);
+      }
+
       // Update donation status
       const updatedDonation = await tx.donation.update({
         where: { id },

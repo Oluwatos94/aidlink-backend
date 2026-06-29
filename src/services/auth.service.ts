@@ -11,6 +11,7 @@ import { NotificationService } from './notification.service';
 import { config } from '../config';
 import logger from '../config/logger';
 import { EmailPreferenceService } from './email-preference.service';
+import crypto from 'crypto';
 
 const TOKEN_EXPIRY_HOURS = parseInt(process.env.VERIFICATION_TOKEN_EXPIRY_HOURS || '24', 10);
 const RESEND_RATE_LIMIT = parseInt(process.env.VERIFICATION_RESEND_RATE_LIMIT || '3', 10);
@@ -84,6 +85,11 @@ export class AuthService {
     // Create default email preferences (non-blocking)
     EmailPreferenceService.createDefault(user.id).catch((err) =>
       logger.error('Failed to create email preferences for new user:', err)
+    );
+
+    // Send verification email (non-blocking)
+    this.sendVerificationEmail(user.id, user.email).catch((err) =>
+      logger.error('Failed to send verification email:', err)
     );
 
     // Generate tokens
@@ -299,6 +305,76 @@ export class AuthService {
     if (!user) throw new AppError('User not found', 404);
     return this.sanitizeUser(user);
   }
+
+  // ── Email Verification ────────────────────────────────────────────
+
+  static async sendVerificationEmail(userId: string, email: string): Promise<void> {
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+    await prisma.emailVerificationToken.create({
+      data: { userId, token, expiresAt },
+    });
+
+    const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
+
+    await prisma.notification.create({
+      data: {
+        userId,
+        type: 'EMAIL_VERIFICATION',
+        title: 'Verify your email',
+        message: `Please verify your email by clicking: ${verificationUrl}`,
+        metadata: { verificationUrl, token },
+      },
+    });
+
+    logger.info(`Verification email sent to: ${email}`);
+  }
+
+  static async verifyEmail(token: string): Promise<void> {
+    const record = await prisma.emailVerificationToken.findUnique({
+      where: { token },
+    });
+
+    if (!record) {
+      throw new AppError('Invalid verification token', 400);
+    }
+
+    if (record.expiresAt < new Date()) {
+      await prisma.emailVerificationToken.delete({ where: { token } });
+      throw new AppError('Verification token has expired', 400);
+    }
+
+    if (record.usedAt) {
+      throw new AppError('Verification token already used', 400);
+    }
+
+    await prisma.user.update({
+      where: { id: record.userId },
+      data: { emailVerified: true, status: UserStatus.ACTIVE },
+    });
+
+    await prisma.emailVerificationToken.update({
+      where: { token },
+      data: { usedAt: new Date() },
+    });
+
+    logger.info(`Email verified for user: ${record.userId}`);
+  }
+
+  static async resendVerificationEmail(userId: string): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+
+    if (!user) throw new AppError('User not found', 404);
+    if (user.emailVerified) throw new AppError('Email already verified', 400);
+
+    // Delete previous tokens
+    await prisma.emailVerificationToken.deleteMany({ where: { userId } });
+
+    await this.sendVerificationEmail(userId, user.email);
+  }
+
+  // ── Private helpers ───────────────────────────────────────────────
 
   private static generateTokens(userId: string, email: string, role: Role): TokenPair {
     const payload: JWTPayload = { id: userId, email, role };
