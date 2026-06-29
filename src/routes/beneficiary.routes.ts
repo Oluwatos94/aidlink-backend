@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { BeneficiaryController } from '../controllers/beneficiary.controller';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requireVerified } from '../middleware/auth';
 import { z } from 'zod';
 import { validate } from '../middleware/validation';
 
@@ -75,6 +75,17 @@ router.get(
 );
 
 /**
+ * @route   GET /api/v1/beneficiaries/me
+ * @desc    Get the authenticated user's own beneficiary profile
+ * @access  Private (Beneficiary)
+ */
+router.get(
+  '/me',
+  authenticate,
+  BeneficiaryController.getMyBeneficiaryProfile
+);
+
+/**
  * @route   GET /api/v1/beneficiaries/my-profile
  * @desc    Get current user's beneficiary profile
  * @access  Private (Beneficiary)
@@ -134,11 +145,12 @@ router.post(
 /**
  * @route   POST /api/v1/beneficiaries/:id/kyc
  * @desc    Submit KYC documents for beneficiary
- * @access  Private (Beneficiary)
+ * @access  Private (Beneficiary — verified only)
  */
 router.post(
   '/:id/kyc',
   authenticate,
+  requireVerified,
   validate(kycSubmissionSchema),
   BeneficiaryController.submitKYC
 );

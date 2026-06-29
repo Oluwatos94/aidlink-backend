@@ -4,6 +4,10 @@ import { DonationStatus, Role } from '@prisma/client';
 import { MultiplierService } from './multiplier.service';
 import { AppError } from '../middleware/error';
 import logger from '../config/logger';
+import { config } from '../config';
+import { dispatchWebhookEvent } from '../controllers/webhook.controller';
+import { AnalyticsService } from './analytics.service';
+import { sanitizeString } from '../utils/sanitization';
 
 export class DonationService {
   static async createDonation(data: DonationInput, userId?: string): Promise<any> {
@@ -22,6 +26,7 @@ export class DonationService {
     const donation = await prisma.donation.create({
       data: {
         ...data,
+        donorMessage: data.donorMessage ? sanitizeString(data.donorMessage) : undefined,
         userId,
         status: DonationStatus.PENDING,
       },
@@ -139,11 +144,32 @@ export class DonationService {
 
     logger.info(`Donation confirmed: ${id} with tx ${txHash}`);
 
+    dispatchWebhookEvent('DONATION_CONFIRMED', {
+      donationId: id,
+      campaignId: donation.campaignId,
+      amount: updated.amount,
+      currency: updated.currency,
+      blockchainTxHash: txHash,
+    }).catch((err) => logger.error('Webhook dispatch error (donation.confirmed):', err));
+
+    if (config.receipts.enabled && donation.userId) {
+      import('../workers/receipt.worker.js')
+        .then(({ enqueueReceiptGeneration }) => enqueueReceiptGeneration(id))
+        .catch((error) =>
+          logger.error(`Failed to enqueue receipt generation for donation ${id}:`, error),
+        );
+    }
+
     return updated;
   }
 
+  static async getDonations(
+    filters: DonationFilters = {},
+    pagination: any,
+    requestingUserId?: string
+  ): Promise<PaginatedResponse<any>> {
+    filters = filters ?? {};
 
-  static async getDonations(filters: DonationFilters, pagination: any): Promise<PaginatedResponse<any>> {
     const { page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc' } = pagination;
     const skip = (page - 1) * limit;
 
@@ -161,12 +187,16 @@ export class DonationService {
       where.status = filters.status;
     }
 
-    if (filters.startDate) {
-      where.createdAt = { gte: filters.startDate };
-    }
+    if (filters.startDate || filters.endDate) {
+      where.createdAt = {};
 
-    if (filters.endDate) {
-      where.createdAt = { lte: filters.endDate };
+      if (filters.startDate) {
+        where.createdAt.gte = filters.startDate;
+      }
+
+      if (filters.endDate) {
+        where.createdAt.lte = filters.endDate;
+      }
     }
 
     const [donations, total] = await Promise.all([
@@ -190,7 +220,7 @@ export class DonationService {
             },
           },
         },
-      }),
+      }).then((donations) => donations.map((d) => d.isAnonymous && d.userId !== requestingUserId ? { ...d, user: { id: null, username: 'Anonymous', email: null } } : d)),
       prisma.donation.count({ where }),
     ]);
 
@@ -205,7 +235,7 @@ export class DonationService {
     };
   }
 
-  static async getDonationById(id: string): Promise<any> {
+  static async getDonationById(id: string, requestingUserId?: string): Promise<any> {
     const donation = await prisma.donation.findUnique({
       where: { id },
       include: {
@@ -234,6 +264,10 @@ export class DonationService {
       throw new AppError('Donation not found', 404);
     }
 
+    if (donation.isAnonymous && donation.userId !== requestingUserId) {
+      return { ...donation, user: { id: null, username: 'Anonymous', email: null } };
+    }
+
     return donation;
   }
 
@@ -257,6 +291,16 @@ export class DonationService {
     }
 
     const updated = await prisma.$transaction(async (tx) => {
+      // Re-read campaign balance inside transaction to prevent TOCTOU race condition
+      const campaign = await tx.campaign.findUnique({
+        where: { id: donation.campaignId },
+        select: { currentAmount: true },
+      });
+
+      if (!campaign || Number(campaign.currentAmount) < Number(donation.amount)) {
+        throw new AppError('Refund amount exceeds campaign current balance', 400);
+      }
+
       // Update donation status
       const updatedDonation = await tx.donation.update({
         where: { id },
@@ -279,6 +323,11 @@ export class DonationService {
     });
 
     logger.info(`Donation refunded: ${id} by user ${userId}`);
+
+    // Update cache: invalidate on refund
+    AnalyticsService.invalidateCampaignCache(donation.campaignId).catch((err) =>
+      logger.error('Failed to invalidate campaign cache on refund', err)
+    );
 
     return updated;
   }
