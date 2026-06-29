@@ -301,6 +301,7 @@ describe('DonationService', () => {
           }),
         },
         campaign: {
+          findUnique: jest.fn().mockResolvedValue({ currentAmount: 500 }),
           update: jest.fn().mockResolvedValue({
             id: 'campaign-1',
             currentAmount: 400,
@@ -314,10 +315,42 @@ describe('DonationService', () => {
       const result = await DonationService.refundDonation('donation-1', 'user-1', 'DONOR' as any);
 
       expect(result.status).toBe('REFUNDED');
+      expect(txMock.campaign.findUnique).toHaveBeenCalledWith({
+        where: { id: 'campaign-1' },
+        select: { currentAmount: true },
+      });
       expect(txMock.campaign.update).toHaveBeenCalledWith({
         where: { id: 'campaign-1' },
         data: { currentAmount: { decrement: 100 } },
       });
+    });
+
+    it('re-reads campaign balance inside transaction and rejects if insufficient', async () => {
+      // Outer snapshot shows sufficient balance, but inside tx the balance is insufficient
+      const txMock = {
+        donation: {
+          update: jest.fn(),
+        },
+        campaign: {
+          findUnique: jest.fn().mockResolvedValue({ currentAmount: 30 }), // INSIDE: 30 < 100 = REJECT
+          update: jest.fn(),
+        },
+      };
+
+      (prisma.donation.findUnique as jest.Mock).mockResolvedValue(mockDonation);
+      (prisma.$transaction as jest.Mock).mockImplementation(async (fn: any) => fn(txMock));
+
+      await expect(
+        DonationService.refundDonation('donation-1', 'user-1', 'DONOR' as any)
+      ).rejects.toThrow('Refund amount exceeds campaign current balance');
+
+      // tx.campaign.findUnique was called for re-read
+      expect(txMock.campaign.findUnique).toHaveBeenCalledWith({
+        where: { id: 'campaign-1' },
+        select: { currentAmount: true },
+      });
+      // donation.update should NOT be called (guard threw)
+      expect(txMock.donation.update).not.toHaveBeenCalled();
     });
 
     it('should throw error if donation is not confirmed', async () => {
@@ -352,6 +385,7 @@ describe('DonationService', () => {
           }),
         },
         campaign: {
+          findUnique: jest.fn().mockResolvedValue({ currentAmount: 500 }),
           update: jest.fn().mockResolvedValue({
             id: 'campaign-1',
             currentAmount: 400,
@@ -379,6 +413,7 @@ describe('DonationService', () => {
           }),
         },
         campaign: {
+          findUnique: jest.fn().mockResolvedValue({ currentAmount: 500 }),
           update: jest.fn().mockResolvedValue({
             id: 'campaign-1',
             currentAmount: 400,
