@@ -1,125 +1,96 @@
-import { Response, NextFunction } from 'express';
-import { Role } from '@prisma/client';
+import { Request, Response, NextFunction } from 'express';
 import { AuthRequest } from '../types';
-import { AppError } from '../middleware/error';
 import { WebhookService } from '../services/webhook.service';
+import { WebhookEventType, WebhookDeliveryStatus } from '@prisma/client';
+import { webhookQueue } from '../workers/webhook.worker';
+import prisma from '../config/database';
 
 export class WebhookController {
-  static async listWebhooks(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  static async create(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      WebhookController.requireAdmin(req);
-      const webhooks = await WebhookService.listWebhooks();
-      res.status(200).json({ success: true, data: webhooks });
-    } catch (error) {
-      next(error);
-    }
+      const authReq = req as AuthRequest;
+      const webhook = await WebhookService.createWebhook({ ...req.body, createdBy: authReq.user!.id });
+      res.status(201).json({ success: true, data: webhook });
+    } catch (err) { next(err); }
   }
 
-  static async createWebhook(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  static async list(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      WebhookController.requireAdmin(req);
-      const webhook = await WebhookService.registerWebhook(req.body, req.user!.id);
-      res.status(201).json({
-        success: true,
-        data: webhook,
-        message: 'Webhook registered successfully',
-      });
-    } catch (error) {
-      next(error);
-    }
+      const result = await WebhookService.getWebhooks(Number(req.query.page) || 1, Number(req.query.limit) || 20);
+      res.json({ success: true, ...result });
+    } catch (err) { next(err); }
   }
 
-  static async getWebhook(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  static async getById(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      WebhookController.requireAdmin(req);
-      const webhook = await WebhookService.getWebhook(req.params.id);
-      res.status(200).json({ success: true, data: webhook });
-    } catch (error) {
-      next(error);
-    }
+      const webhook = await WebhookService.getWebhookById(req.params.id);
+      res.json({ success: true, data: webhook });
+    } catch (err) { next(err); }
   }
 
-  static async updateWebhook(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  static async update(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      WebhookController.requireAdmin(req);
       const webhook = await WebhookService.updateWebhook(req.params.id, req.body);
-      res.status(200).json({
-        success: true,
-        data: webhook,
-        message: 'Webhook updated successfully',
-      });
-    } catch (error) {
-      next(error);
-    }
+      res.json({ success: true, data: webhook });
+    } catch (err) { next(err); }
   }
 
-  static async deleteWebhook(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  static async remove(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      WebhookController.requireAdmin(req);
       await WebhookService.deleteWebhook(req.params.id);
-      res.status(200).json({
-        success: true,
-        message: 'Webhook disabled successfully',
-      });
-    } catch (error) {
-      next(error);
-    }
+      res.json({ success: true, message: 'Webhook deleted' });
+    } catch (err) { next(err); }
   }
 
-  static async testWebhook(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  static async test(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      WebhookController.requireAdmin(req);
-      const event = await WebhookService.deliverTestPayload(req.params.id);
-      res.status(202).json({
-        success: true,
-        data: event,
-        message: 'Webhook test delivery queued',
-      });
-    } catch (error) {
-      next(error);
-    }
+      const result = await WebhookService.testWebhook(req.params.id);
+      res.json({ success: true, data: result });
+    } catch (err) { next(err); }
   }
 
-  static async listWebhookEvents(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  static async getEvents(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      WebhookController.requireAdmin(req);
-      const events = await WebhookService.listEvents({
-        webhookId: req.params.id,
-        status: req.query.status as string,
-        eventType: req.query.eventType as string,
-      });
-      res.status(200).json({ success: true, data: events });
-    } catch (error) {
-      next(error);
-    }
+      const result = await WebhookService.getEventsByWebhook(
+        req.params.id,
+        Number(req.query.page) || 1,
+        Number(req.query.limit) || 20
+      );
+      res.json({ success: true, ...result });
+    } catch (err) { next(err); }
   }
 
-  static async listAllEvents(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  static async getAllEvents(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      WebhookController.requireAdmin(req);
-      const events = await WebhookService.listEvents({
-        status: req.query.status as string,
-        eventType: req.query.eventType as string,
-      });
-      res.status(200).json({ success: true, data: events });
-    } catch (error) {
-      next(error);
-    }
+      const result = await WebhookService.getAllEvents(Number(req.query.page) || 1, Number(req.query.limit) || 20);
+      res.json({ success: true, ...result });
+    } catch (err) { next(err); }
   }
 
-  static async getEvent(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  static async getEventById(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      WebhookController.requireAdmin(req);
-      const event = await WebhookService.getEvent(req.params.eventId);
-      res.status(200).json({ success: true, data: event });
-    } catch (error) {
-      next(error);
-    }
+      const event = await WebhookService.getEventById(req.params.eventId);
+      res.json({ success: true, data: event });
+    } catch (err) { next(err); }
   }
+}
 
-  private static requireAdmin(req: AuthRequest): void {
-    if (!req.user || req.user.role !== Role.ADMIN) {
-      throw new AppError('Admin access required', 403);
-    }
-  }
+// ─── Helper used by platform services to fire webhook events ─────────────────
+
+export async function dispatchWebhookEvent(
+  eventType: WebhookEventType,
+  payload: Record<string, unknown>
+): Promise<void> {
+  await WebhookService.dispatch(eventType, payload);
+
+  const pending = await prisma.webhookEvent.findMany({
+    where: { eventType, status: WebhookDeliveryStatus.PENDING, lastAttemptAt: null, nextRetryAt: { lte: new Date() } },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+    select: { id: true },
+  });
+
+  await Promise.all(
+    pending.map((e: { id: string }) => webhookQueue.add('deliver', { eventId: e.id }, { removeOnComplete: 100 }))
+  );
 }

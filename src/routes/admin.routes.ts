@@ -2,8 +2,9 @@ import { Router } from 'express';
 import { AdminController } from '../controllers/admin.controller';
 import { ModerationController } from '../controllers/moderation.controller';
 import { OrganizationController } from '../controllers/organization.controller';
-import { WebhookController } from '../controllers/webhook.controller';
-import { authenticate } from '../middleware/auth';
+import { MilestoneController } from '../controllers/milestone.controller';
+import { RecoveryController } from '../controllers/recovery.controller';
+import { authenticate, authorize } from '../middleware/auth';
 import { z } from 'zod';
 import { validate } from '../middleware/validation';
 import {
@@ -12,8 +13,7 @@ import {
   resolveAppealSchema,
   organizationReviewSchema,
   organizationRejectSchema,
-  webhookCreateSchema,
-  webhookUpdateSchema,
+  milestoneReviewSchema,
 } from '../utils/validation';
 
 const router = Router();
@@ -189,62 +189,60 @@ router.post(
   OrganizationController.requestMoreInfo
 );
 
-// ─── Webhooks (Admin) ───────────────────────────────────────────
+// ─── Milestone verification (Admin / Verifier) ─────────────────
 
 router.get(
-  '/webhooks/events',
+  '/milestone-submissions',
   authenticate,
-  WebhookController.listAllEvents
+  authorize('ADMIN', 'VERIFIER'),
+  MilestoneController.listAdminSubmissions
 );
 
 router.get(
-  '/webhooks/events/:eventId',
+  '/milestone-submissions/:submissionId',
   authenticate,
-  WebhookController.getEvent
-);
-
-router.get(
-  '/webhooks',
-  authenticate,
-  WebhookController.listWebhooks
+  authorize('ADMIN', 'VERIFIER'),
+  MilestoneController.getAdminSubmission
 );
 
 router.post(
-  '/webhooks',
+  '/milestone-submissions/:submissionId/reviews',
   authenticate,
-  validate(webhookCreateSchema),
-  WebhookController.createWebhook
+  authorize('ADMIN', 'VERIFIER'),
+  validate(milestoneReviewSchema),
+  MilestoneController.createReview
 );
 
 router.get(
-  '/webhooks/:id',
+  '/milestone-submissions/:submissionId/reviews',
   authenticate,
-  WebhookController.getWebhook
-);
-
-router.put(
-  '/webhooks/:id',
-  authenticate,
-  validate(webhookUpdateSchema),
-  WebhookController.updateWebhook
-);
-
-router.delete(
-  '/webhooks/:id',
-  authenticate,
-  WebhookController.deleteWebhook
-);
-
-router.post(
-  '/webhooks/:id/test',
-  authenticate,
-  WebhookController.testWebhook
+  authorize('ADMIN', 'VERIFIER'),
+  MilestoneController.listSubmissionReviews
 );
 
 router.get(
-  '/webhooks/:id/events',
+  '/milestones/:milestoneId/verification-status',
   authenticate,
-  WebhookController.listWebhookEvents
+  authorize('ADMIN', 'VERIFIER'),
+  MilestoneController.getMilestoneVerificationStatus
 );
+
+// ─── Recovery Workflow (Admin) ───────────────────────────────────
+
+router.get('/recoveries/reconciliation', authenticate, RecoveryController.reconciliation);
+router.get('/recoveries', authenticate, RecoveryController.listCases);
+router.get('/recoveries/:id', authenticate, RecoveryController.getCase);
+
+router.post('/recoveries/failed-refund', authenticate, RecoveryController.createFailedRefundCase);
+router.post('/recoveries/failed-distribution', authenticate, RecoveryController.createFailedDistributionCase);
+router.post('/recoveries/:id/donor-credit', authenticate, RecoveryController.issueDonorCredit);
+
+router.post('/refunds/:id/retry', authenticate, RecoveryController.retryRefund);
+router.post('/refunds/:id/update-destination', authenticate, RecoveryController.updateRefundDestination);
+
+router.post('/distributions/:id/retry', authenticate, RecoveryController.retryDistribution);
+router.post('/distributions/:id/flag-recovery', authenticate, RecoveryController.flagDistributionRecovery);
+
+router.post('/campaigns/:id/settle', authenticate, RecoveryController.settleCampaign);
 
 export default router;

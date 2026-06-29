@@ -34,6 +34,10 @@ export const config = {
     user: process.env.SMTP_USER!,
     password: process.env.SMTP_PASSWORD!,
     from: process.env.EMAIL_FROM || 'noreply@aidlink.org',
+    queueEnabled: process.env.EMAIL_QUEUE_ENABLED === 'true',
+    appUrl: process.env.APP_URL || 'http://localhost:3000',
+    logoUrl: process.env.EMAIL_LOGO_URL || 'https://aidlink.org/logo.png',
+    supportEmail: process.env.SUPPORT_EMAIL || 'support@aidlink.org',
   },
   
   soroban: {
@@ -70,6 +74,16 @@ export const config = {
     healthCheckInterval: parseInt(process.env.HEALTH_CHECK_INTERVAL || '30000', 10),
   },
 
+  receipts: {
+    enabled: process.env.RECEIPTS_ENABLED !== 'false',
+    storagePrefix: process.env.RECEIPT_STORAGE_PREFIX || 'receipts',
+    senderEmail: process.env.RECEIPT_SENDER_EMAIL || process.env.EMAIL_FROM || 'noreply@aidlink.org',
+    urlExpirySeconds: parseInt(process.env.RECEIPT_URL_EXPIRY_SECONDS || '86400', 10),
+    defaultRegion: process.env.RECEIPT_DEFAULT_REGION || 'US',
+    regionalRequirements: process.env.REGIONAL_TAX_REQUIREMENTS,
+    maxBatchSize: parseInt(process.env.RECEIPT_MAX_BATCH_SIZE || '1000', 10),
+  },
+
   moderation: {
     // Feature flag: when false, the worker still records reports but never
     // auto-suspends. Admins can always suspend/reinstate manually.
@@ -85,12 +99,43 @@ export const config = {
     notifyDonorsOnFraudSuspension: process.env.MODERATION_NOTIFY_DONORS_ON_FRAUD !== 'false',
   },
 
-  webhooks: {
-    maxAttempts: parseInt(process.env.WEBHOOK_MAX_ATTEMPTS || '3', 10),
-    timeoutMs: parseInt(process.env.WEBHOOK_TIMEOUT_MS || '5000', 10),
-    retryBaseDelayMs: parseInt(process.env.WEBHOOK_RETRY_BASE_DELAY_MS || '60000', 10),
-    retryMaxDelayMs: parseInt(process.env.WEBHOOK_RETRY_MAX_DELAY_MS || '3600000', 10),
-    retryProcessorIntervalMs: parseInt(process.env.WEBHOOK_RETRY_PROCESSOR_INTERVAL_MS || '60000', 10),
+  kycFraud: {
+    // Velocity window in minutes
+    velocityWindowMinutes: parseInt(process.env.KYC_FRAUD_VELOCITY_WINDOW_MINUTES || '60', 10),
+    // Max submissions per IP within the velocity window before flagging
+    velocityMaxSubmissionsPerIp: parseInt(process.env.KYC_FRAUD_VELOCITY_MAX_PER_IP || '5', 10),
+    // Max submissions per user within the velocity window before flagging
+    velocityMaxSubmissionsPerUser: parseInt(process.env.KYC_FRAUD_VELOCITY_MAX_PER_USER || '3', 10),
+    // Geographic anomaly: max km/h travel speed considered plausible
+    geoMaxPlausibleSpeedKmh: parseInt(process.env.KYC_FRAUD_GEO_MAX_SPEED_KMH || '900', 10),
+    // Score at which a submission is considered high risk (triggers FRAUD_DETECTION job)
+    highRiskThreshold: parseInt(process.env.KYC_FRAUD_HIGH_RISK_THRESHOLD || '50', 10),
+    // Signal weights (must sum to 100)
+    weights: {
+      documentReuse: parseInt(process.env.KYC_FRAUD_WEIGHT_DOC_REUSE || '30', 10),
+      geoAnomaly: parseInt(process.env.KYC_FRAUD_WEIGHT_GEO || '20', 10),
+      velocity: parseInt(process.env.KYC_FRAUD_WEIGHT_VELOCITY || '25', 10),
+      deviceFingerprint: parseInt(process.env.KYC_FRAUD_WEIGHT_DEVICE || '15', 10),
+      thirdParty: parseInt(process.env.KYC_FRAUD_WEIGHT_THIRD_PARTY || '10', 10),
+    },
+    // Third-party fraud service (optional)
+    thirdPartyEnabled: process.env.KYC_FRAUD_THIRD_PARTY_ENABLED === 'true',
+    thirdPartyApiUrl: process.env.KYC_FRAUD_THIRD_PARTY_API_URL || '',
+    thirdPartyApiKey: process.env.KYC_FRAUD_THIRD_PARTY_API_KEY || '',
+    thirdPartyTimeoutMs: parseInt(process.env.KYC_FRAUD_THIRD_PARTY_TIMEOUT_MS || '5000', 10),
+  },
+
+  analytics: {
+    // Cron patterns for rollup jobs (configurable via env vars)
+    hourlyRollupCron: process.env.ANALYTICS_HOURLY_CRON || '5 * * * *',
+    monthlyRollupCron: process.env.ANALYTICS_MONTHLY_CRON || '0 2 1 * *',
+    trendingRefreshCron: process.env.ANALYTICS_TRENDING_CRON || '*/15 * * * *',
+    // Feature flag to disable analytics worker
+    analyticsWorkerEnabled: process.env.ANALYTICS_WORKER_ENABLED !== 'false',
+    // Cache TTL for campaign stats in seconds
+    campaignStatsCacheTTL: parseInt(process.env.ANALYTICS_CACHE_TTL || '3600', 10),
+    // Number of trending campaigns to track
+    trendingCampaignsCount: parseInt(process.env.ANALYTICS_TRENDING_COUNT || '20', 10),
   },
 };
 

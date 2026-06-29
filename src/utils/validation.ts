@@ -152,36 +152,55 @@ export const resolveAppealSchema = z.object({
   adminNotes: z.string().max(2000).optional(),
 });
 
-export const webhookEventTypes = [
-  'donation.confirmed',
-  'distribution.completed',
-  'campaign.milestone_reached',
-  'kyc.status_changed',
-] as const;
-
-const webhookUrl = z.string().url('Webhook URL must be valid').refine(
-  (url) => new URL(url).protocol === 'https:',
-  'Webhook URL must use HTTPS'
-);
-
-export const webhookCreateSchema = z.object({
-  name: z.string().min(2, 'Webhook name must be at least 2 characters').max(100),
-  url: webhookUrl,
-  events: z.array(z.enum(webhookEventTypes)).min(1, 'At least one event subscription is required'),
-  secret: z.string().min(16, 'Webhook secret must be at least 16 characters'),
-  active: z.boolean().optional(),
-  description: z.string().max(2000).optional(),
-  deliverTestPayload: z.boolean().optional(),
+export const milestoneSubmissionSchema = z.object({
+  description: z.string().min(10, 'Description must be at least 10 characters').max(5000),
+  evidenceUrls: z
+    .array(z.string().url('Each evidence URL must be a valid URL'))
+    .min(1, 'At least one evidence URL is required')
+    .max(20),
+  metricsData: z.record(z.unknown()).default({}),
+  submissionNotes: z.string().max(2000).optional(),
 });
 
-export const webhookUpdateSchema = z.object({
-  name: z.string().min(2).max(100).optional(),
-  url: webhookUrl.optional(),
-  events: z.array(z.enum(webhookEventTypes)).min(1).optional(),
-  secret: z.string().min(16).optional(),
-  active: z.boolean().optional(),
-  description: z.string().max(2000).nullable().optional(),
-}).refine((value) => Object.keys(value).length > 0, 'At least one webhook field is required');
+export const milestoneSubmissionUpdateSchema = milestoneSubmissionSchema
+  .partial()
+  .refine((v: object) => Object.keys(v).length > 0, 'At least one field is required');
+
+export const milestoneReviewSchema = z.object({
+  decision: z.enum(['APPROVED', 'REJECTED', 'REVISION_REQUESTED']),
+  reason: z.string().min(1).max(2000).optional(),
+  verifierNotes: z.string().max(2000).optional(),
+  metricsConfirmed: z.record(z.unknown()).optional(),
+  impactSummary: z.string().max(2000).optional(),
+});
+
+export const generateBatchReceiptsSchema = z
+  .object({
+    organizationId: z.string().min(1).optional(),
+    campaignId: z.string().min(1).optional(),
+    donationIds: z.array(z.string().min(1)).min(1).max(1000).optional(),
+    dateRange: z
+      .object({
+        from: z.coerce.date().optional(),
+        to: z.coerce.date().optional(),
+      })
+      .optional(),
+    region: z.string().min(2).max(8).optional(),
+  })
+  .refine(
+    (data) =>
+      Boolean(
+        data.organizationId ||
+          data.campaignId ||
+          (data.donationIds && data.donationIds.length > 0) ||
+          data.dateRange?.from ||
+          data.dateRange?.to,
+      ),
+    {
+      message:
+        'At least one filter is required (organizationId, campaignId, donationIds, or dateRange)',
+    },
+  );
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
@@ -192,3 +211,4 @@ export type BeneficiaryInput = z.infer<typeof beneficiarySchema>;
 export type OrganizationInput = z.infer<typeof organizationSchema>;
 export type DistributionInput = z.infer<typeof distributionSchema>;
 export type KYCSubmissionInput = z.infer<typeof kycSubmissionSchema>;
+export type GenerateBatchReceiptsInput = z.infer<typeof generateBatchReceiptsSchema>;
