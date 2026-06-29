@@ -538,22 +538,27 @@ enum KYCStatus {
 }
 
 model KYCSubmission {
-  id             String    @id @default(cuid())
-  userId         String
-  beneficiaryId  String?
-  submissionType String // INDIVIDUAL, ORGANIZATION
-  status         KYCStatus @default(PENDING)
-  documentType   String
-  documentUrl    String
-  selfieUrl      String?
-  additionalDocs Json?
-  reviewNotes    String?   @db.Text
-  reviewedBy     String?
-  reviewedAt     DateTime?
-  expiresAt      DateTime?
-  fraudScore     Int       @default(0)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id                String    @id @default(cuid())
+  userId            String
+  beneficiaryId     String?
+  submissionType    String // INDIVIDUAL, ORGANIZATION
+  status            KYCStatus @default(PENDING)
+  documentType      String
+  documentUrl       String
+  selfieUrl         String?
+  additionalDocs    Json?
+  reviewNotes       String?   @db.Text
+  reviewedBy        String?
+  reviewedAt        DateTime?
+  expiresAt         DateTime?
+  fraudScore        Int       @default(0)
+  fraudSignals      Json?     // Array of { signal, severity, detail }
+  fraudReason       String?   @db.Text
+  ipAddress         String?
+  userAgent         String?
+  deviceFingerprint String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   beneficiary Beneficiary? @relation(fields: [beneficiaryId], references: [id], onDelete: Cascade)
@@ -562,6 +567,8 @@ model KYCSubmission {
   @@index([beneficiaryId])
   @@index([status])
   @@index([createdAt])
+  @@index([ipAddress])
+  @@index([deviceFingerprint])
 }
 
 // ============================================
